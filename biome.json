@@ -1,0 +1,248 @@
+{
+	"assist": {
+		"actions": {
+			"source": {
+				"useSortedAttributes": "on",
+				"useSortedKeys": "off",
+				"useSortedProperties": "on"
+			}
+		}
+	},
+	"files": {
+		"ignoreUnknown": true,
+		"includes": [
+			"**",
+			"!!**/.claude",
+			"!!**/coverage",
+			"!!**/dist",
+			"!!**/node_modules",
+			"!**/vite.config.ts",
+			"!**/*.min.js",
+			"!**/*.min.mjs"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab"
+	},
+	"html": {
+		"experimentalFullSupportEnabled": true
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double"
+		}
+	},
+	"linter": {
+		"domains": {
+			"test": "recommended"
+		},
+		"enabled": true,
+		"rules": {
+			"a11y": {
+				"noNoninteractiveElementInteractions": "on"
+			},
+			"complexity": {
+				"noExcessiveCognitiveComplexity": {
+					"level": "warn",
+					"options": {
+						"maxAllowedComplexity": 15
+					}
+				},
+				"noExcessiveLinesPerFunction": {
+					"level": "warn",
+					"options": {
+						"maxLines": 50,
+						"skipBlankLines": true
+					}
+				},
+				"noExcessiveNestedTestSuites": "on",
+				"noForEach": "on",
+				"noImplicitCoercions": "on",
+				"noUselessStringConcat": "on",
+				"noVoid": "on",
+				"useLiteralKeys": "off",
+				"useSimplifiedLogicExpression": "on",
+				"useWhile": "on"
+			},
+			"correctness": {
+				"noGlobalDirnameFilename": "on",
+				"useJsonImportAttributes": "on"
+			},
+			"nursery": {
+				"noDeprecatedImports": "on",
+				"noDeprecatedMediaType": "on",
+				"useGlobalThis": "on",
+				"noDuplicateAttributes": "on",
+				"noDuplicateEnumValues": "on",
+				"noDuplicatedSpreadProps": "on",
+				"noEmptySource": "on",
+				"noFloatingClasses": "on",
+				"noFloatingPromises": "on",
+				"noImportCycles": "on",
+				"noMisusedPromises": "on",
+				"noNestedPromises": "on",
+				"noRedundantDefaultExport": "on",
+				"noScriptUrl": "on",
+				"noShadow": "on",
+				"noSyncScripts": "on",
+				"noUndeclaredEnvVars": "on",
+				"noUnnecessaryConditions": "on",
+				"noUselessUndefined": "on",
+				"useArraySortCompare": "on",
+				"useAwaitThenable": "off",
+				"useConsistentArrowReturn": "on",
+				"useConsistentMethodSignatures": "on",
+				"useExhaustiveSwitchCases": "on",
+				"useExplicitType": "on",
+				"useFind": "on",
+				"useSortedClasses": "on",
+				"useSpread": "on"
+			},
+			"performance": {
+				"noDelete": "on",
+				"noReExportAll": "on"
+			},
+			"recommended": true,
+			"security": {
+				"noSecrets": "off"
+			},
+			"style": {
+				"noCommonJs": "on",
+				"noDoneCallback": "on",
+				"noExportedImports": "on",
+				"noImplicitBoolean": "on",
+				"noMagicNumbers": "off",
+				"noNegationElse": "on",
+				"noNestedTernary": "on",
+				"noParameterAssign": "on",
+				"noRestrictedGlobals": "on",
+				"noShoutyConstants": "on",
+				"noSubstr": "on",
+				"noUnusedTemplateLiteral": "on",
+				"noUselessElse": "on",
+				"noValueAtRule": "on",
+				"noYodaExpression": "on",
+				"useAsConstAssertion": "on",
+				"useAtIndex": "on",
+				"useBlockStatements": "on",
+				"useCollapsedElseIf": "on",
+				"useCollapsedIf": "on",
+				"useConsistentArrayType": "on",
+				"useConsistentBuiltinInstantiation": "on",
+				"useConsistentCurlyBraces": "on",
+				"useConsistentObjectDefinitions": {
+					"level": "warn",
+					"options": {
+						"syntax": "explicit"
+					}
+				},
+				"useDefaultParameterLast": "on",
+				"useDefaultSwitchClause": "on",
+				"useEnumInitializers": "on",
+				"useExplicitLengthCheck": "on",
+				"useFilenamingConvention": {
+					"level": "warn",
+					"options": {
+						"filenameCases": ["camelCase", "kebab-case", "PascalCase"]
+					}
+				},
+				"useForOf": "on",
+				"useGroupedAccessorPairs": "on",
+				"useNamingConvention": "off",
+				"useNodeAssertStrict": "on",
+				"useNumberNamespace": "on",
+				"useObjectSpread": "on",
+				"useReadonlyClassProperties": "on",
+				"useSelfClosingElements": "on",
+				"useShorthandAssign": "on",
+				"useSingleVarDeclarator": "on",
+				"useSymbolDescription": "on",
+				"useThrowNewError": "on",
+				"useThrowOnlyError": "on",
+				"useTrimStartEnd": "on",
+				"useUnifiedTypeSignatures": "on"
+			},
+			"suspicious": {
+				"noAlert": "on",
+				"noConsole": "on",
+				"noConstantBinaryExpressions": "on",
+				"noEmptyBlockStatements": "on",
+				"noEvolvingTypes": "on",
+				"noMisplacedAssertion": "on",
+				"noSkippedTests": "on",
+				"noUnassignedVariables": "on",
+				"noVar": "on",
+				"useAwait": "off",
+				"useErrorMessage": "on",
+				"useGuardForIn": "on",
+				"useNumberToFixedDigitsArgument": "on",
+				"useStaticResponseMethods": "on",
+				"useStrictMode": "on"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["**/schemas/**", "**/*.schema.ts", "**/schemas.ts"],
+			"linter": {
+				"rules": {
+					"nursery": {
+						"useExplicitType": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["tests/**"],
+			"linter": {
+				"rules": {
+					"complexity": {
+						"noExcessiveCognitiveComplexity": {
+							"level": "warn",
+							"options": {
+								"maxAllowedComplexity": 20
+							}
+						},
+						"noExcessiveLinesPerFunction": {
+							"level": "warn",
+							"options": {
+								"maxLines": 120,
+								"skipBlankLines": true
+							}
+						},
+						"noForEach": "off"
+					},
+					"nursery": {
+						"noFloatingClasses": "off"
+					},
+					"performance": {
+						"noReExportAll": "off"
+					},
+					"suspicious": {
+						"noConsole": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["tests/suites/**/*.ts"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noMisplacedAssertion": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/**"],
+			"plugins": ["./biome-plugins/no-as-unknown-as.grit"]
+		}
+	],
+	"vcs": {
+		"clientKind": "git",
+		"enabled": true,
+		"useIgnoreFile": true
+	}
+}

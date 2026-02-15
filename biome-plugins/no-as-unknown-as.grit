@@ -1,0 +1,22 @@
+// Biome Plugin: no-double-assertion
+// Prohibits unsafe double type assertions (as unknown as T)
+//
+// This pattern detects the TypeScript "double assertion" anti-pattern:
+//   value as unknown as TargetType
+//
+// Double assertions completely bypass TypeScript's type checking and should
+// be avoided. Use type guards, proper type narrowing, or validation instead.
+//
+// MATCHES:
+//   - `foo as unknown as string`
+//   - `obj.value as unknown as MyType`
+//   - `(a + b) as unknown as number`
+//
+// DOES NOT MATCH:
+//   - `foo as string` (single assertion)
+//   - `foo as unknown` (single assertion to unknown)
+// For exceptions, add '// biome-ignore lint/plugin: explanation' to suppress it.
+
+`$expr as unknown as $target` as $double where {
+	register_diagnostic(span=$double, message="Avoid double type assertion 'as unknown as'. This bypasses TypeScript's type checking. Use type guards or proper validation instead.", severity="warn")
+}
