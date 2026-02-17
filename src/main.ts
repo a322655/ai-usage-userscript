@@ -1,3 +1,4 @@
+import "./codex-api.ts";
 import {
 	collectUsageCards,
 	resolveMissingResetInformation,
@@ -11,27 +12,7 @@ import { clamp } from "./utils.ts";
 
 const DIVIDER_CLASS: string = "ai-usage-pace-divider";
 const UPDATE_INTERVAL_MS: number = 30_000;
-const PACE_EPSILON: number = 0.01;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type PaceStatus = "fast" | "slow" | "on-track" | "unknown";
-
-const STATUS_COLORS: Readonly<Record<PaceStatus, string>> = {
-	fast: "rgb(239, 68, 68)",
-	slow: "rgb(37, 99, 235)",
-	"on-track": "rgb(249, 115, 22)",
-	unknown: "rgb(249, 115, 22)",
-};
-
-const STATUS_LABELS: Readonly<Record<PaceStatus, string>> = {
-	fast: "too fast",
-	slow: "too slow",
-	"on-track": "on track",
-	unknown: "unknown",
-};
+const DIVIDER_COLOR: string = "rgb(249, 115, 22)";
 
 // ---------------------------------------------------------------------------
 // Pace computation
@@ -64,39 +45,14 @@ const computeTargetRemainingRatio = (
 	return clamp(targetRemainingRatio, 0, 1);
 };
 
-const computeCurrentRemainingRatio = (card: UsageCard): number | null => {
-	const trackWidth: number = card.trackElement.getBoundingClientRect().width;
-	if (trackWidth <= 0) {
-		return null;
-	}
-	const fillWidth: number = card.fillElement.getBoundingClientRect().width;
-	const fillRatio: number = clamp(fillWidth / trackWidth, 0, 1);
-
-	if (card.fillMeaning === "used") {
-		return 1 - fillRatio;
-	}
-	return fillRatio;
-};
-
-const computePaceStatus = (
+const computeDividerLeftPercent = (
+	card: UsageCard,
 	targetRemainingRatio: number,
-	currentRemainingRatio: number | null,
-): PaceStatus => {
-	if (currentRemainingRatio === null) {
-		return "unknown";
+): number => {
+	if (card.fillMeaning === "used") {
+		return (1 - targetRemainingRatio) * 100;
 	}
-
-	const targetUsedRatio: number = 1 - targetRemainingRatio;
-	const currentUsedRatio: number = 1 - currentRemainingRatio;
-	const usedDelta: number = currentUsedRatio - targetUsedRatio;
-
-	if (Math.abs(usedDelta) <= PACE_EPSILON) {
-		return "on-track";
-	}
-	if (usedDelta > 0) {
-		return "fast";
-	}
-	return "slow";
+	return targetRemainingRatio * 100;
 };
 
 // ---------------------------------------------------------------------------
@@ -126,25 +82,14 @@ const removeDividerElement = (trackContainer: HTMLElement): void => {
 	}
 };
 
-const buildDividerTooltip = (
-	targetRemainingRatio: number,
-	currentRemainingRatio: number | null,
-	status: PaceStatus,
-): string => {
+const buildDividerTooltip = (targetRemainingRatio: number): string => {
 	const targetPercent: string = (targetRemainingRatio * 100).toFixed(1);
-	if (currentRemainingRatio === null) {
-		return `Pace marker: expected ${targetPercent}% remaining`;
-	}
-
-	const currentPercent: string = (currentRemainingRatio * 100).toFixed(1);
-	const statusLabel: string = STATUS_LABELS[status];
-	return `Pace marker: expected ${targetPercent}% remaining, current ${currentPercent}% (${statusLabel})`;
+	return `Pace marker: expected ${targetPercent}% remaining`;
 };
 
 const applyDividerStyles = (
 	dividerElement: HTMLDivElement,
 	leftPercent: number,
-	status: PaceStatus,
 ): void => {
 	dividerElement.style.position = "absolute";
 	dividerElement.style.top = "-2px";
@@ -155,32 +100,26 @@ const applyDividerStyles = (
 	dividerElement.style.borderRadius = "9999px";
 	dividerElement.style.pointerEvents = "none";
 	dividerElement.style.zIndex = "5";
-	dividerElement.style.backgroundColor = STATUS_COLORS[status];
+	dividerElement.style.backgroundColor = DIVIDER_COLOR;
 	dividerElement.style.boxShadow = "0 0 0 1px rgba(255, 255, 255, 0.7)";
 };
 
 const updateDividerElement = (
 	card: UsageCard,
 	targetRemainingRatio: number,
-	currentRemainingRatio: number | null,
-	status: PaceStatus,
 ): void => {
 	const trackContainer: HTMLElement = card.trackContainerElement;
 	if (getComputedStyle(trackContainer).position === "static") {
 		trackContainer.style.position = "relative";
 	}
 
-	const leftPercent: number =
-		card.fillMeaning === "used"
-			? (1 - targetRemainingRatio) * 100
-			: targetRemainingRatio * 100;
-	const dividerElement: HTMLDivElement = ensureDividerElement(trackContainer);
-	applyDividerStyles(dividerElement, leftPercent, status);
-	dividerElement.title = buildDividerTooltip(
+	const leftPercent: number = computeDividerLeftPercent(
+		card,
 		targetRemainingRatio,
-		currentRemainingRatio,
-		status,
 	);
+	const dividerElement: HTMLDivElement = ensureDividerElement(trackContainer);
+	applyDividerStyles(dividerElement, leftPercent);
+	dividerElement.title = buildDividerTooltip(targetRemainingRatio);
 };
 
 // ---------------------------------------------------------------------------
@@ -190,7 +129,9 @@ const updateDividerElement = (
 const renderPaceDividers = (): void => {
 	const now: Date = new Date();
 	const cards: UsageCard[] = collectUsageCards(now);
-	resolveMissingResetInformation(cards);
+	if (globalThis.location.hostname !== "chatgpt.com") {
+		resolveMissingResetInformation(cards);
+	}
 
 	for (const card of cards) {
 		const targetRemainingRatio: number | null = computeTargetRemainingRatio(
@@ -202,18 +143,7 @@ const renderPaceDividers = (): void => {
 			continue;
 		}
 
-		const currentRemainingRatio: number | null =
-			computeCurrentRemainingRatio(card);
-		const status: PaceStatus = computePaceStatus(
-			targetRemainingRatio,
-			currentRemainingRatio,
-		);
-		updateDividerElement(
-			card,
-			targetRemainingRatio,
-			currentRemainingRatio,
-			status,
-		);
+		updateDividerElement(card, targetRemainingRatio);
 	}
 };
 
@@ -261,14 +191,23 @@ const bootstrap = (): void => {
 	}
 
 	globalWindow.__aiUsageDividerInitialized__ = true;
-	scheduleRender();
-	globalThis.setTimeout((): void => {
+
+	const init = (): void => {
 		scheduleRender();
-	}, 300);
-	globalThis.setTimeout((): void => {
-		scheduleRender();
-	}, 2_000);
-	setupAutoRefresh();
+		globalThis.setTimeout((): void => {
+			scheduleRender();
+		}, 300);
+		globalThis.setTimeout((): void => {
+			scheduleRender();
+		}, 2_000);
+		setupAutoRefresh();
+	};
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", init);
+	} else {
+		init();
+	}
 };
 
 bootstrap();

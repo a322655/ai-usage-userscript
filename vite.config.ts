@@ -22,6 +22,7 @@ export default defineConfig({
 					"https://claude.ai/settings/usage*",
 					"https://www.kimi.com/code/console*",
 				],
+				"run-at": "document-start",
 				grant: "none",
 			},
 		}),

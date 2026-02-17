@@ -1,3 +1,7 @@
+import {
+	type CodexRateLimitWindow,
+	findCodexRateLimitWindow,
+} from "./codex-api.ts";
 import { parseResetDate } from "./reset-date.ts";
 import { normalizeWhitespace } from "./utils.ts";
 
@@ -74,6 +78,20 @@ const inferDurationMs = (
 	if (/weekly/i.test(text) === true || /code\s*review/i.test(text) === true) {
 		return ONE_WEEK_MS;
 	}
+	if (/\brate\s+limit\b/i.test(text) === true) {
+		return null;
+	}
+	if (resetLabel !== null) {
+		const hoursMatch: RegExpMatchArray | null = resetLabel.match(
+			/\bin\s+(\d+)\s+hours?\b/i,
+		);
+		if (hoursMatch !== null) {
+			const hours: number = Number.parseInt(hoursMatch[1] ?? "0", 10);
+			if (Number.isNaN(hours) === false && hours >= 24) {
+				return ONE_WEEK_MS;
+			}
+		}
+	}
 	if (
 		resetLabel !== null &&
 		/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/i.test(resetLabel) === true
@@ -126,7 +144,10 @@ const parseResetInfo = (
 		durationSourceText,
 		resetLabel,
 	);
-	return { resetAt: resetAt, durationMs: durationMs };
+	return {
+		resetAt: resetAt,
+		durationMs: durationMs,
+	};
 };
 
 // ---------------------------------------------------------------------------
@@ -187,6 +208,20 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 		const headerText: string = normalizeWhitespace(
 			headerElement?.textContent ?? "",
 		);
+
+		const apiWindow: CodexRateLimitWindow | null =
+			findCodexRateLimitWindow(headerText);
+		if (apiWindow !== null) {
+			cards.push({
+				fullText: fullText,
+				...resolved,
+				resetAt: apiWindow.resetAt,
+				durationMs: apiWindow.durationMs,
+				fillMeaning: "remaining",
+			});
+			continue;
+		}
+
 		const durationSourceText: string =
 			headerText.length > 0 ? headerText : fullText;
 		const { resetAt, durationMs } = parseResetInfo(
@@ -195,7 +230,6 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 			durationSourceText,
 			now,
 		);
-
 		cards.push({
 			fullText: fullText,
 			...resolved,

@@ -11,11 +11,105 @@
 // @match        https://claude.ai/settings/usage*
 // @match        https://www.kimi.com/code/console*
 // @grant        none
+// @run-at       document-start
 // ==/UserScript==
 
 (function () {
   'use strict';
 
+  let interceptedData = null;
+  const USAGE_API_PATH = "/backend-api/wham/usage";
+  const isUsageApiUrl = (url) => url.includes(USAGE_API_PATH) === true && url.includes("daily") === false && url.includes("credit") === false;
+  const extractUrlFromInput = (input) => {
+    if (typeof input === "string") {
+      return input;
+    }
+    if (input instanceof Request) {
+      return input.url;
+    }
+    return "";
+  };
+  const handleInterceptedResponse = (response) => {
+    response.clone().json().then((data) => {
+      interceptedData = data;
+    }).catch(() => void 0);
+  };
+  const installFetchInterceptor = () => {
+    const originalFetch = globalThis.fetch;
+    const handler = {
+      apply: (target, thisArg, args) => {
+        const result = Reflect.apply(
+          target,
+          thisArg,
+          args
+        );
+        const url = extractUrlFromInput(args[0]);
+        if (isUsageApiUrl(url) === true) {
+          result.then(handleInterceptedResponse).catch(
+() => void 0
+          );
+        }
+        return result;
+      }
+    };
+    globalThis.fetch = new Proxy(originalFetch, handler);
+  };
+  if (globalThis.location.hostname === "chatgpt.com") {
+    installFetchInterceptor();
+  }
+  const toWindow = (apiWindow) => {
+    if (apiWindow === null || apiWindow === void 0) {
+      return null;
+    }
+    if (apiWindow.limit_window_seconds <= 0 || apiWindow.reset_at <= 0) {
+      return null;
+    }
+    return {
+      durationMs: apiWindow.limit_window_seconds * 1e3,
+      resetAt: new Date(apiWindow.reset_at * 1e3)
+    };
+  };
+  const resolveRateLimitWindow = (rateLimit, headerText) => {
+    if (/weekly/i.test(headerText) === true) {
+      return toWindow(rateLimit.secondary_window);
+    }
+    if (/\d+\s*hour/i.test(headerText) === true) {
+      return toWindow(rateLimit.primary_window);
+    }
+    return null;
+  };
+  const findAdditionalModelWindow = (additionalLimits, headerText) => {
+    for (const model of additionalLimits) {
+      if (headerText.includes(model.limit_name) === true) {
+        return resolveRateLimitWindow(model.rate_limit, headerText);
+      }
+    }
+    return null;
+  };
+  const findCodexRateLimitWindow = (headerText) => {
+    if (interceptedData === null) {
+      return null;
+    }
+    if (interceptedData.additional_rate_limits !== void 0) {
+      return findAdditionalModelWindow(
+        interceptedData.additional_rate_limits,
+        headerText
+      );
+    }
+    if (/code\s*review/i.test(headerText) === true) {
+      return toWindow(
+        interceptedData.code_review_rate_limit?.primary_window ?? null
+      );
+    }
+    const fallbackRateLimit = {
+      primary_window: null,
+      secondary_window: null
+    };
+    return resolveRateLimitWindow(
+      interceptedData.rate_limit ?? fallbackRateLimit,
+      headerText
+    );
+  };
   const DAY_ABBR_TO_INDEX = {
     sun: 0,
     mon: 1,
@@ -160,6 +254,20 @@
     if (/weekly/i.test(text) === true || /code\s*review/i.test(text) === true) {
       return ONE_WEEK_MS;
     }
+    if (/\brate\s+limit\b/i.test(text) === true) {
+      return null;
+    }
+    if (resetLabel !== null) {
+      const hoursMatch = resetLabel.match(
+        /\bin\s+(\d+)\s+hours?\b/i
+      );
+      if (hoursMatch !== null) {
+        const hours = Number.parseInt(hoursMatch[1] ?? "0", 10);
+        if (Number.isNaN(hours) === false && hours >= 24) {
+          return ONE_WEEK_MS;
+        }
+      }
+    }
     if (resetLabel !== null && /\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/i.test(resetLabel) === true) {
       return ONE_WEEK_MS;
     }
@@ -194,7 +302,10 @@
       durationSourceText,
       resetLabel
     );
-    return { resetAt, durationMs };
+    return {
+      resetAt,
+      durationMs
+    };
   };
   const resolveCodexProgressElements = (articleElement) => {
     const trackNode = articleElement.querySelector(CODEX_TRACK_SELECTOR);
@@ -233,6 +344,17 @@
       const headerText = normalizeWhitespace(
         headerElement?.textContent ?? ""
       );
+      const apiWindow = findCodexRateLimitWindow(headerText);
+      if (apiWindow !== null) {
+        cards.push({
+          fullText,
+          ...resolved,
+          resetAt: apiWindow.resetAt,
+          durationMs: apiWindow.durationMs,
+          fillMeaning: "remaining"
+        });
+        continue;
+      }
       const durationSourceText = headerText.length > 0 ? headerText : fullText;
       const { resetAt, durationMs } = parseResetInfo(
         articleNode,
@@ -409,19 +531,7 @@
   };
   const DIVIDER_CLASS = "ai-usage-pace-divider";
   const UPDATE_INTERVAL_MS = 3e4;
-  const PACE_EPSILON = 0.01;
-  const STATUS_COLORS = {
-    fast: "rgb(239, 68, 68)",
-    slow: "rgb(37, 99, 235)",
-    "on-track": "rgb(249, 115, 22)",
-    unknown: "rgb(249, 115, 22)"
-  };
-  const STATUS_LABELS = {
-    fast: "too fast",
-    slow: "too slow",
-    "on-track": "on track",
-    unknown: "unknown"
-  };
+  const DIVIDER_COLOR = "rgb(249, 115, 22)";
   const computeTargetRemainingRatio = (card, now) => {
     if (card.resetAt === null || card.durationMs === null || card.durationMs <= 0) {
       return null;
@@ -439,32 +549,11 @@
     const targetRemainingRatio = 1 - elapsedMs / card.durationMs;
     return clamp(targetRemainingRatio, 0, 1);
   };
-  const computeCurrentRemainingRatio = (card) => {
-    const trackWidth = card.trackElement.getBoundingClientRect().width;
-    if (trackWidth <= 0) {
-      return null;
-    }
-    const fillWidth = card.fillElement.getBoundingClientRect().width;
-    const fillRatio = clamp(fillWidth / trackWidth, 0, 1);
+  const computeDividerLeftPercent = (card, targetRemainingRatio) => {
     if (card.fillMeaning === "used") {
-      return 1 - fillRatio;
+      return (1 - targetRemainingRatio) * 100;
     }
-    return fillRatio;
-  };
-  const computePaceStatus = (targetRemainingRatio, currentRemainingRatio) => {
-    if (currentRemainingRatio === null) {
-      return "unknown";
-    }
-    const targetUsedRatio = 1 - targetRemainingRatio;
-    const currentUsedRatio = 1 - currentRemainingRatio;
-    const usedDelta = currentUsedRatio - targetUsedRatio;
-    if (Math.abs(usedDelta) <= PACE_EPSILON) {
-      return "on-track";
-    }
-    if (usedDelta > 0) {
-      return "fast";
-    }
-    return "slow";
+    return targetRemainingRatio * 100;
   };
   const ensureDividerElement = (trackContainer) => {
     const existingDivider = trackContainer.querySelector(
@@ -486,16 +575,11 @@
       dividerElement.remove();
     }
   };
-  const buildDividerTooltip = (targetRemainingRatio, currentRemainingRatio, status) => {
+  const buildDividerTooltip = (targetRemainingRatio) => {
     const targetPercent = (targetRemainingRatio * 100).toFixed(1);
-    if (currentRemainingRatio === null) {
-      return `Pace marker: expected ${targetPercent}% remaining`;
-    }
-    const currentPercent = (currentRemainingRatio * 100).toFixed(1);
-    const statusLabel = STATUS_LABELS[status];
-    return `Pace marker: expected ${targetPercent}% remaining, current ${currentPercent}% (${statusLabel})`;
+    return `Pace marker: expected ${targetPercent}% remaining`;
   };
-  const applyDividerStyles = (dividerElement, leftPercent, status) => {
+  const applyDividerStyles = (dividerElement, leftPercent) => {
     dividerElement.style.position = "absolute";
     dividerElement.style.top = "-2px";
     dividerElement.style.bottom = "-2px";
@@ -505,27 +589,28 @@
     dividerElement.style.borderRadius = "9999px";
     dividerElement.style.pointerEvents = "none";
     dividerElement.style.zIndex = "5";
-    dividerElement.style.backgroundColor = STATUS_COLORS[status];
+    dividerElement.style.backgroundColor = DIVIDER_COLOR;
     dividerElement.style.boxShadow = "0 0 0 1px rgba(255, 255, 255, 0.7)";
   };
-  const updateDividerElement = (card, targetRemainingRatio, currentRemainingRatio, status) => {
+  const updateDividerElement = (card, targetRemainingRatio) => {
     const trackContainer = card.trackContainerElement;
     if (getComputedStyle(trackContainer).position === "static") {
       trackContainer.style.position = "relative";
     }
-    const leftPercent = card.fillMeaning === "used" ? (1 - targetRemainingRatio) * 100 : targetRemainingRatio * 100;
-    const dividerElement = ensureDividerElement(trackContainer);
-    applyDividerStyles(dividerElement, leftPercent, status);
-    dividerElement.title = buildDividerTooltip(
-      targetRemainingRatio,
-      currentRemainingRatio,
-      status
+    const leftPercent = computeDividerLeftPercent(
+      card,
+      targetRemainingRatio
     );
+    const dividerElement = ensureDividerElement(trackContainer);
+    applyDividerStyles(dividerElement, leftPercent);
+    dividerElement.title = buildDividerTooltip(targetRemainingRatio);
   };
   const renderPaceDividers = () => {
     const now = new Date();
     const cards = collectUsageCards(now);
-    resolveMissingResetInformation(cards);
+    if (globalThis.location.hostname !== "chatgpt.com") {
+      resolveMissingResetInformation(cards);
+    }
     for (const card of cards) {
       const targetRemainingRatio = computeTargetRemainingRatio(
         card,
@@ -535,17 +620,7 @@
         removeDividerElement(card.trackContainerElement);
         continue;
       }
-      const currentRemainingRatio = computeCurrentRemainingRatio(card);
-      const status = computePaceStatus(
-        targetRemainingRatio,
-        currentRemainingRatio
-      );
-      updateDividerElement(
-        card,
-        targetRemainingRatio,
-        currentRemainingRatio,
-        status
-      );
+      updateDividerElement(card, targetRemainingRatio);
     }
   };
   let renderScheduled = false;
@@ -579,14 +654,21 @@
       return;
     }
     globalWindow.__aiUsageDividerInitialized__ = true;
-    scheduleRender();
-    globalThis.setTimeout(() => {
+    const init = () => {
       scheduleRender();
-    }, 300);
-    globalThis.setTimeout(() => {
-      scheduleRender();
-    }, 2e3);
-    setupAutoRefresh();
+      globalThis.setTimeout(() => {
+        scheduleRender();
+      }, 300);
+      globalThis.setTimeout(() => {
+        scheduleRender();
+      }, 2e3);
+      setupAutoRefresh();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
   };
   bootstrap();
 
