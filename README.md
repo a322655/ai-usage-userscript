@@ -6,7 +6,7 @@ A userscript that adds **pace dividers** to AI coding tool usage pages, helping 
 
 | Site | URL | Fill Meaning |
 |------|-----|-------------|
-| Codex | `chatgpt.com/codex/settings/usage` | Remaining (green) |
+| Codex | `chatgpt.com/codex/cloud/settings/analytics` | Remaining (green) |
 | Claude | `claude.ai/settings/usage` | Used (blue) |
 | Kimi Code | `www.kimi.com/code/console` | Used |
 
