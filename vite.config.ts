@@ -18,7 +18,7 @@ export default defineConfig({
 				supportURL:
 					"https://github.com/a322655/ai-usage-userscript/issues",
 				match: [
-					"https://chatgpt.com/codex/settings/usage*",
+					"https://chatgpt.com/codex/cloud/settings/analytics*",
 					"https://claude.ai/settings/usage*",
 					"https://www.kimi.com/code/console*",
 				],

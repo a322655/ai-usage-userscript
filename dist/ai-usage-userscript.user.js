@@ -7,7 +7,7 @@
 // @license      MIT
 // @homepageURL  https://github.com/a322655/ai-usage-userscript
 // @supportURL   https://github.com/a322655/ai-usage-userscript/issues
-// @match        https://chatgpt.com/codex/settings/usage*
+// @match        https://chatgpt.com/codex/cloud/settings/analytics*
 // @match        https://claude.ai/settings/usage*
 // @match        https://www.kimi.com/code/console*
 // @grant        none
