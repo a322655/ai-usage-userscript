@@ -63,23 +63,21 @@
 				"noVoid": "on",
 				"useLiteralKeys": "off",
 				"useSimplifiedLogicExpression": "on",
-				"useWhile": "on"
+				"useWhile": "on",
+				"noUselessUndefined": "on"
 			},
 			"correctness": {
 				"noGlobalDirnameFilename": "on",
 				"useJsonImportAttributes": "on"
 			},
 			"nursery": {
-				"noDeprecatedImports": "on",
 				"noDeprecatedMediaType": "on",
 				"useGlobalThis": "on",
 				"noDuplicateAttributes": "on",
 				"noDuplicateEnumValues": "on",
 				"noDuplicatedSpreadProps": "on",
-				"noEmptySource": "on",
 				"noFloatingClasses": "on",
 				"noFloatingPromises": "on",
-				"noImportCycles": "on",
 				"noMisusedPromises": "on",
 				"noNestedPromises": "on",
 				"noRedundantDefaultExport": "on",
@@ -88,10 +86,8 @@
 				"noSyncScripts": "on",
 				"noUndeclaredEnvVars": "on",
 				"noUnnecessaryConditions": "on",
-				"noUselessUndefined": "on",
 				"useArraySortCompare": "on",
 				"useAwaitThenable": "off",
-				"useConsistentArrowReturn": "on",
 				"useConsistentMethodSignatures": "on",
 				"useExhaustiveSwitchCases": "on",
 				"useExplicitType": "on",
@@ -161,7 +157,8 @@
 				"useThrowNewError": "on",
 				"useThrowOnlyError": "on",
 				"useTrimStartEnd": "on",
-				"useUnifiedTypeSignatures": "on"
+				"useUnifiedTypeSignatures": "on",
+				"useConsistentArrowReturn": "on"
 			},
 			"suspicious": {
 				"noAlert": "on",
@@ -178,7 +175,10 @@
 				"useGuardForIn": "on",
 				"useNumberToFixedDigitsArgument": "on",
 				"useStaticResponseMethods": "on",
-				"useStrictMode": "on"
+				"useStrictMode": "on",
+				"noDeprecatedImports": "on",
+				"noEmptySource": "on",
+				"noImportCycles": "on"
 			}
 		}
 	},
