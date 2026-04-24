@@ -11,8 +11,11 @@ import { clamp } from "./utils.ts";
 // ---------------------------------------------------------------------------
 
 const DIVIDER_CLASS: string = "ai-usage-pace-divider";
+const DIVIDER_BAR_CLASS: string = "ai-usage-pace-divider-bar";
 const UPDATE_INTERVAL_MS: number = 30_000;
 const DIVIDER_COLOR: string = "rgb(249, 115, 22)";
+const DIVIDER_HIT_AREA_WIDTH: string = "12px";
+const DIVIDER_BAR_WIDTH: string = "2px";
 
 // ---------------------------------------------------------------------------
 // Pace computation
@@ -73,6 +76,20 @@ const ensureDividerElement = (trackContainer: HTMLElement): HTMLDivElement => {
 	return dividerElement;
 };
 
+const ensureBarElement = (dividerElement: HTMLDivElement): HTMLDivElement => {
+	const existingBar: HTMLDivElement | null = dividerElement.querySelector(
+		`.${DIVIDER_BAR_CLASS}`,
+	);
+	if (existingBar !== null) {
+		return existingBar;
+	}
+
+	const barElement: HTMLDivElement = document.createElement("div");
+	barElement.className = DIVIDER_BAR_CLASS;
+	dividerElement.append(barElement);
+	return barElement;
+};
+
 const removeDividerElement = (trackContainer: HTMLElement): void => {
 	const dividerElement: HTMLDivElement | null = trackContainer.querySelector(
 		`.${DIVIDER_CLASS}`,
@@ -95,13 +112,24 @@ const applyDividerStyles = (
 	dividerElement.style.top = "-2px";
 	dividerElement.style.bottom = "-2px";
 	dividerElement.style.left = `${leftPercent.toFixed(4)}%`;
-	dividerElement.style.width = "2px";
+	dividerElement.style.width = DIVIDER_HIT_AREA_WIDTH;
 	dividerElement.style.transform = "translateX(-50%)";
-	dividerElement.style.borderRadius = "9999px";
-	dividerElement.style.pointerEvents = "none";
+	dividerElement.style.backgroundColor = "transparent";
+	dividerElement.style.cursor = "help";
 	dividerElement.style.zIndex = "5";
-	dividerElement.style.backgroundColor = DIVIDER_COLOR;
-	dividerElement.style.boxShadow = "0 0 0 1px rgba(255, 255, 255, 0.7)";
+};
+
+const applyBarStyles = (barElement: HTMLDivElement): void => {
+	barElement.style.position = "absolute";
+	barElement.style.top = "0";
+	barElement.style.bottom = "0";
+	barElement.style.left = "50%";
+	barElement.style.width = DIVIDER_BAR_WIDTH;
+	barElement.style.transform = "translateX(-50%)";
+	barElement.style.borderRadius = "9999px";
+	barElement.style.pointerEvents = "none";
+	barElement.style.backgroundColor = DIVIDER_COLOR;
+	barElement.style.boxShadow = "0 0 0 1px rgba(255, 255, 255, 0.7)";
 };
 
 const updateDividerElement = (
@@ -119,6 +147,10 @@ const updateDividerElement = (
 	);
 	const dividerElement: HTMLDivElement = ensureDividerElement(trackContainer);
 	applyDividerStyles(dividerElement, leftPercent);
+
+	const barElement: HTMLDivElement = ensureBarElement(dividerElement);
+	applyBarStyles(barElement);
+
 	dividerElement.title = buildDividerTooltip(targetRemainingRatio);
 };
 

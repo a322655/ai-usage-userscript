@@ -14,11 +14,7 @@ A userscript that adds **pace dividers** to AI coding tool usage pages, helping 
 
 The script detects usage progress bars on each site and renders a vertical **pace marker** showing where your usage *should* be based on elapsed time in the current weekly cycle.
 
-- **Red marker** — usage too fast
-- **Blue marker** — usage too slow
-- **Orange marker** — on track
-
-Hover over the marker to see exact percentages and status.
+Hover over the marker to see the expected remaining percentage.
 
 ## Install
 
