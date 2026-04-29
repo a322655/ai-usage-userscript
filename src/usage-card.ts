@@ -15,8 +15,8 @@ const CODEX_TRACK_SELECTOR: string = 'div[class*="bg-[#ebebf0]"]';
 const CODEX_FILL_SELECTOR: string = 'div[class*="bg-[#22c55e]"]';
 
 const CLAUDE_TRACK_SELECTOR: string =
-	'div[class*="bg-bg-000"][class*="h-4"][class*="rounded"]';
-const CLAUDE_FILL_SELECTOR: string = 'div[class*="h-full"]';
+	'div[class~="bg-alpha-2"][class~="h-2"][class~="rounded-full"]';
+const CLAUDE_FILL_SELECTOR: string = 'div[class~="bg-fill-accent"]';
 
 const KIMI_CARD_SELECTOR: string = ".stats-card";
 const KIMI_BAR_SELECTOR: string = ".stats-card-progress-bar";
@@ -283,6 +283,7 @@ const resolveClaudeProgressElements = (
 const CLAUDE_SKIP_PATTERNS: readonly RegExp[] = [
 	/current\s+session/i,
 	/\$[\d,.]+\s+spent/i,
+	/\bdaily\s+included\b/i,
 ];
 
 const collectClaudeCards = (now: Date): UsageCard[] => {

@@ -132,8 +132,8 @@ var interceptedData = null;
 	var ONE_WEEK_MS = 10080 * 60 * 1e3;
 	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
 	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#22c55e]\"]";
-	var CLAUDE_TRACK_SELECTOR = "div[class*=\"bg-bg-000\"][class*=\"h-4\"][class*=\"rounded\"]";
-	var CLAUDE_FILL_SELECTOR = "div[class*=\"h-full\"]";
+	var CLAUDE_TRACK_SELECTOR = "div[class~=\"bg-alpha-2\"][class~=\"h-2\"][class~=\"rounded-full\"]";
+	var CLAUDE_FILL_SELECTOR = "div[class~=\"bg-fill-accent\"]";
 	var KIMI_CARD_SELECTOR = ".stats-card";
 	var KIMI_BAR_SELECTOR = ".stats-card-progress-bar";
 	var KIMI_FILL_SELECTOR = ".stats-card-progress-filled";
@@ -237,7 +237,11 @@ var interceptedData = null;
 			rowElement: rowNode
 		};
 	};
-	var CLAUDE_SKIP_PATTERNS = [/current\s+session/i, /\$[\d,.]+\s+spent/i];
+	var CLAUDE_SKIP_PATTERNS = [
+		/current\s+session/i,
+		/\$[\d,.]+\s+spent/i,
+		/\bdaily\s+included\b/i
+	];
 	var collectClaudeCards = (now) => {
 		const cards = [];
 		const trackCandidates = document.querySelectorAll(CLAUDE_TRACK_SELECTOR);
