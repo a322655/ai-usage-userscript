@@ -25,7 +25,7 @@ Hover over the marker to see the expected remaining percentage.
 ### From GitHub (manual)
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) or another userscript manager
-2. Click the raw link to install: [ai-usage-userscript.user.js](https://raw.githubusercontent.com/a322655/ai-usage-userscript/main/dist/ai-usage-userscript.user.js)
+2. Click the raw link to install: [ai-usage-userscript.user.js](https://raw.githubusercontent.com/eigenigma/ai-usage-userscript/main/dist/ai-usage-userscript.user.js)
 
 ## Development
 

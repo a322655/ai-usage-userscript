@@ -8,15 +8,17 @@ export default defineConfig({
 			userscript: {
 				name: "AI Usage",
 				namespace: "https://github.com/a322655",
-				version: "1.0.1",
+				version: "1.0.2",
 				description:
 					"Show pace dividers on AI usage pages (Codex, Claude, Kimi Code)",
-				author: "a322655",
+				author: "WindFade",
 				license: "MIT",
-				homepageURL:
-					"https://github.com/a322655/ai-usage-userscript",
-				supportURL:
-					"https://github.com/a322655/ai-usage-userscript/issues",
+				homepageURL: "https://github.com/eigenigma/ai-usage-userscript",
+				supportURL: "https://github.com/eigenigma/ai-usage-userscript/issues",
+				updateURL:
+					"https://raw.githubusercontent.com/eigenigma/ai-usage-userscript/main/dist/ai-usage-userscript.user.js",
+				downloadURL:
+					"https://raw.githubusercontent.com/eigenigma/ai-usage-userscript/main/dist/ai-usage-userscript.user.js",
 				match: [
 					"https://chatgpt.com/codex/cloud/settings/analytics*",
 					"https://claude.ai/settings/usage*",
