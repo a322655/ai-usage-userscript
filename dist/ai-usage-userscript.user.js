@@ -133,7 +133,7 @@ var interceptedData = null;
 	var normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
 	var ONE_WEEK_MS = 10080 * 60 * 1e3;
 	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
-	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#22c55e]\"]";
+	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#\"]:not([class*=\"bg-[#ebebf0]\"])";
 	var CLAUDE_TRACK_SELECTOR = "div[class~=\"bg-alpha-2\"][class~=\"h-2\"][class~=\"rounded-full\"]";
 	var CLAUDE_FILL_SELECTOR = "div[class~=\"bg-fill-accent\"]";
 	var KIMI_CARD_SELECTOR = ".stats-card";
@@ -182,16 +182,20 @@ var interceptedData = null;
 	};
 	var resolveCodexProgressElements = (articleElement) => {
 		const trackNode = articleElement.querySelector(CODEX_TRACK_SELECTOR);
-		const fillNode = articleElement.querySelector(CODEX_FILL_SELECTOR);
-		if (trackNode instanceof HTMLElement === false || fillNode instanceof HTMLElement === false) return null;
+		if (trackNode instanceof HTMLElement === false) return null;
 		const trackContainerNode = trackNode.parentElement;
 		if (trackContainerNode instanceof HTMLElement === false) return null;
-		if (validateTrackGeometry(trackNode.getBoundingClientRect(), fillNode.getBoundingClientRect()) === false) return null;
-		return {
-			trackElement: trackNode,
-			fillElement: fillNode,
-			trackContainerElement: trackContainerNode
-		};
+		const trackRect = trackNode.getBoundingClientRect();
+		const fillCandidates = trackContainerNode.querySelectorAll(CODEX_FILL_SELECTOR);
+		for (const candidate of fillCandidates) {
+			if (candidate instanceof HTMLElement === false) continue;
+			if (validateTrackGeometry(trackRect, candidate.getBoundingClientRect())) return {
+				trackElement: trackNode,
+				fillElement: candidate,
+				trackContainerElement: trackContainerNode
+			};
+		}
+		return null;
 	};
 	var collectCodexCards = (now) => {
 		const cards = [];

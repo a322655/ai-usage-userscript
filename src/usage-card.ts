@@ -12,7 +12,8 @@ import { normalizeWhitespace } from "./utils.ts";
 export const ONE_WEEK_MS: number = 7 * 24 * 60 * 60 * 1_000;
 
 const CODEX_TRACK_SELECTOR: string = 'div[class*="bg-[#ebebf0]"]';
-const CODEX_FILL_SELECTOR: string = 'div[class*="bg-[#22c55e]"]';
+const CODEX_FILL_SELECTOR: string =
+	'div[class*="bg-[#"]:not([class*="bg-[#ebebf0]"])';
 
 const CLAUDE_TRACK_SELECTOR: string =
 	'div[class~="bg-alpha-2"][class~="h-2"][class~="rounded-full"]';
@@ -159,12 +160,7 @@ const resolveCodexProgressElements = (
 ): ProgressElements | null => {
 	const trackNode: Element | null =
 		articleElement.querySelector(CODEX_TRACK_SELECTOR);
-	const fillNode: Element | null =
-		articleElement.querySelector(CODEX_FILL_SELECTOR);
-	if (
-		trackNode instanceof HTMLElement === false ||
-		fillNode instanceof HTMLElement === false
-	) {
+	if (trackNode instanceof HTMLElement === false) {
 		return null;
 	}
 
@@ -174,16 +170,22 @@ const resolveCodexProgressElements = (
 	}
 
 	const trackRect: DOMRect = trackNode.getBoundingClientRect();
-	const fillRect: DOMRect = fillNode.getBoundingClientRect();
-	if (validateTrackGeometry(trackRect, fillRect) === false) {
-		return null;
+	const fillCandidates: NodeListOf<Element> =
+		trackContainerNode.querySelectorAll(CODEX_FILL_SELECTOR);
+	for (const candidate of fillCandidates) {
+		if (candidate instanceof HTMLElement === false) {
+			continue;
+		}
+		if (validateTrackGeometry(trackRect, candidate.getBoundingClientRect())) {
+			return {
+				trackElement: trackNode,
+				fillElement: candidate,
+				trackContainerElement: trackContainerNode,
+			};
+		}
 	}
 
-	return {
-		trackElement: trackNode,
-		fillElement: fillNode,
-		trackContainerElement: trackContainerNode,
-	};
+	return null;
 };
 
 const collectCodexCards = (now: Date): UsageCard[] => {
