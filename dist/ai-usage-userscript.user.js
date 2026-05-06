@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI Usage
 // @namespace    https://github.com/a322655
-// @version      1.0.2
+// @version      1.0.3
 // @author       WindFade
 // @description  Show pace dividers on AI usage pages (Codex, Claude, Kimi Code)
 // @license      MIT
