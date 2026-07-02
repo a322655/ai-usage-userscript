@@ -1,3 +1,5 @@
+import { unsafeWindow } from "vite-plugin-monkey/dist/client";
+
 // ---------------------------------------------------------------------------
 // Types (API response shape)
 // ---------------------------------------------------------------------------
@@ -54,6 +56,10 @@ const extractUrlFromInput = (input: unknown): string => {
 };
 
 const handleInterceptedResponse = (response: Response): void => {
+	// Error bodies ({"detail": ...}) must not clobber previously captured data.
+	if (response.ok === false) {
+		return;
+	}
 	response
 		.clone()
 		.json()
@@ -65,7 +71,9 @@ const handleInterceptedResponse = (response: Response): void => {
 };
 
 const installFetchInterceptor = (): void => {
-	const originalFetch: typeof fetch = globalThis.fetch;
+	// The script runs in the userscript sandbox, so the page's fetch lives on
+	// unsafeWindow; patching globalThis.fetch would never see page requests.
+	const originalFetch: typeof fetch = unsafeWindow.fetch;
 	const handler: ProxyHandler<typeof fetch> = {
 		apply: (
 			target: typeof fetch,
@@ -87,7 +95,7 @@ const installFetchInterceptor = (): void => {
 			return result;
 		},
 	};
-	globalThis.fetch = new Proxy(originalFetch, handler);
+	unsafeWindow.fetch = new Proxy(originalFetch, handler);
 };
 
 if (globalThis.location.hostname === "chatgpt.com") {
@@ -145,11 +153,16 @@ export const findCodexRateLimitWindow = (
 		return null;
 	}
 
+	// Model-specific limits (e.g. Spark) coexist with the account-wide
+	// rate_limit, so a miss here must fall through to the generic windows.
 	if (interceptedData.additional_rate_limits !== undefined) {
-		return findAdditionalModelWindow(
+		const modelWindow: CodexRateLimitWindow | null = findAdditionalModelWindow(
 			interceptedData.additional_rate_limits,
 			headerText,
 		);
+		if (modelWindow !== null) {
+			return modelWindow;
+		}
 	}
 
 	if (/code\s*review/iu.test(headerText) === true) {
