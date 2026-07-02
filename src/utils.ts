@@ -9,4 +9,4 @@ export const clamp = (value: number, min: number, max: number): number => {
 };
 
 export const normalizeWhitespace = (value: string): string =>
-	value.replace(/\s+/g, " ").trim();
+	value.replace(/\s+/gu, " ").trim();

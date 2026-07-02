@@ -58,7 +58,7 @@ const buildDateAtTimeOfDay = (totalMinutes: number, now: Date): Date => {
 
 const parseDayTimeLabel = (resetLabel: string, now: Date): Date | null => {
 	const dayTimeMatch: RegExpMatchArray | null = resetLabel.match(
-		/^\s*(?<day>Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s+(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/i,
+		/^\s*(?<day>Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s+(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/iu,
 	);
 	if (dayTimeMatch?.groups === undefined) {
 		return null;
@@ -97,7 +97,7 @@ const parseDayTimeLabel = (resetLabel: string, now: Date): Date | null => {
 
 const parseTimeOnlyLabel = (resetLabel: string, now: Date): Date | null => {
 	const timeMatch: RegExpMatchArray | null = resetLabel.match(
-		/^\s*(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/i,
+		/^\s*(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/iu,
 	);
 	if (timeMatch?.groups === undefined) {
 		return null;
@@ -121,17 +121,20 @@ const parseTimeOnlyLabel = (resetLabel: string, now: Date): Date | null => {
 
 const parseRelativeTimeLabel = (resetLabel: string, now: Date): Date | null => {
 	const relativeMatch: RegExpMatchArray | null = resetLabel.match(
-		/^in\s+(?:(\d+)\s+days?\s*)?(?:(\d+)\s+hours?\s*)?(?:(\d+)\s+minutes?)?\s*$/i,
+		/^in\s+(?:(?<days>\d+)\s+days?\s*)?(?:(?<hours>\d+)\s+hours?\s*)?(?:(?<minutes>\d+)\s+minutes?)?\s*$/iu,
 	);
 	if (relativeMatch === null) {
 		return null;
 	}
 
-	const days: number = Number.parseInt(relativeMatch[1] ?? "0", 10) || 0;
-	const hours: number = Number.parseInt(relativeMatch[2] ?? "0", 10) || 0;
-	const minutes: number = Number.parseInt(relativeMatch[3] ?? "0", 10) || 0;
+	const days: number =
+		Number.parseInt(relativeMatch.groups?.days ?? "0", 10) || 0;
+	const hours: number =
+		Number.parseInt(relativeMatch.groups?.hours ?? "0", 10) || 0;
+	const minutes: number =
+		Number.parseInt(relativeMatch.groups?.minutes ?? "0", 10) || 0;
 
-	const totalMs: number = (days * 24 * 60 + hours * 60 + minutes) * 60 * 1_000;
+	const totalMs: number = (days * 24 * 60 + hours * 60 + minutes) * 60 * 1000;
 	if (totalMs <= 0) {
 		return null;
 	}
