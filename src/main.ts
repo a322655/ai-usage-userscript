@@ -231,7 +231,7 @@ const bootstrap = (): void => {
 		}, 300);
 		globalThis.setTimeout((): void => {
 			scheduleRender();
-		}, 2_000);
+		}, 2000);
 		setupAutoRefresh();
 	};
 

@@ -17,7 +17,8 @@
 // ==/UserScript==
 
 (function() {
-var interceptedData = null;
+	"use strict";
+	var interceptedData = null;
 	var USAGE_API_PATH = "/backend-api/wham/usage";
 	var isUsageApiUrl = (url) => url.includes(USAGE_API_PATH) === true && url.includes("daily") === false && url.includes("credit") === false;
 	var extractUrlFromInput = (input) => {
@@ -48,8 +49,8 @@ var interceptedData = null;
 		};
 	};
 	var resolveRateLimitWindow = (rateLimit, headerText) => {
-		if (/weekly/i.test(headerText) === true) return toWindow(rateLimit.secondary_window);
-		if (/\d+\s*hour/i.test(headerText) === true) return toWindow(rateLimit.primary_window);
+		if (/weekly/iu.test(headerText) === true) return toWindow(rateLimit.secondary_window);
+		if (/\d+\s*hour/iu.test(headerText) === true) return toWindow(rateLimit.primary_window);
 		return null;
 	};
 	var findAdditionalModelWindow = (additionalLimits, headerText) => {
@@ -59,7 +60,7 @@ var interceptedData = null;
 	var findCodexRateLimitWindow = (headerText) => {
 		if (interceptedData === null) return null;
 		if (interceptedData.additional_rate_limits !== void 0) return findAdditionalModelWindow(interceptedData.additional_rate_limits, headerText);
-		if (/code\s*review/i.test(headerText) === true) return toWindow(interceptedData.code_review_rate_limit?.primary_window ?? null);
+		if (/code\s*review/iu.test(headerText) === true) return toWindow(interceptedData.code_review_rate_limit?.primary_window ?? null);
 		return resolveRateLimitWindow(interceptedData.rate_limit ?? {
 			primary_window: null,
 			secondary_window: null
@@ -88,7 +89,7 @@ var interceptedData = null;
 		return candidateDate;
 	};
 	var parseDayTimeLabel = (resetLabel, now) => {
-		const dayTimeMatch = resetLabel.match(/^\s*(?<day>Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s+(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/i);
+		const dayTimeMatch = resetLabel.match(/^\s*(?<day>Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s+(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/iu);
 		if (dayTimeMatch?.groups === void 0) return null;
 		const totalMinutes = parseTimeTokens(dayTimeMatch.groups["hour"] ?? "", dayTimeMatch.groups["minute"] ?? "", dayTimeMatch.groups["meridiem"] ?? "");
 		if (totalMinutes === null) return null;
@@ -102,7 +103,7 @@ var interceptedData = null;
 		return candidateDate;
 	};
 	var parseTimeOnlyLabel = (resetLabel, now) => {
-		const timeMatch = resetLabel.match(/^\s*(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/i);
+		const timeMatch = resetLabel.match(/^\s*(?<hour>\d{1,2}):(?<minute>\d{2})\s*(?<meridiem>[AP]M)\s*$/iu);
 		if (timeMatch?.groups === void 0) return null;
 		const totalMinutes = parseTimeTokens(timeMatch.groups["hour"] ?? "", timeMatch.groups["minute"] ?? "", timeMatch.groups["meridiem"] ?? "");
 		if (totalMinutes === null) return null;
@@ -111,11 +112,11 @@ var interceptedData = null;
 		return candidateDate;
 	};
 	var parseRelativeTimeLabel = (resetLabel, now) => {
-		const relativeMatch = resetLabel.match(/^in\s+(?:(\d+)\s+days?\s*)?(?:(\d+)\s+hours?\s*)?(?:(\d+)\s+minutes?)?\s*$/i);
+		const relativeMatch = resetLabel.match(/^in\s+(?:(?<days>\d+)\s+days?\s*)?(?:(?<hours>\d+)\s+hours?\s*)?(?:(?<minutes>\d+)\s+minutes?)?\s*$/iu);
 		if (relativeMatch === null) return null;
-		const days = Number.parseInt(relativeMatch[1] ?? "0", 10) || 0;
-		const hours = Number.parseInt(relativeMatch[2] ?? "0", 10) || 0;
-		const minutes = Number.parseInt(relativeMatch[3] ?? "0", 10) || 0;
+		const days = Number.parseInt(relativeMatch.groups?.days ?? "0", 10) || 0;
+		const hours = Number.parseInt(relativeMatch.groups?.hours ?? "0", 10) || 0;
+		const minutes = Number.parseInt(relativeMatch.groups?.minutes ?? "0", 10) || 0;
 		const totalMs = (days * 24 * 60 + hours * 60 + minutes) * 60 * 1e3;
 		if (totalMs <= 0) return null;
 		return new Date(now.getTime() + totalMs);
@@ -130,7 +131,7 @@ var interceptedData = null;
 		if (value > max) return max;
 		return value;
 	};
-	var normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+	var normalizeWhitespace = (value) => value.replace(/\s+/gu, " ").trim();
 	var ONE_WEEK_MS = 10080 * 60 * 1e3;
 	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
 	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#\"]:not([class*=\"bg-[#ebebf0]\"])";
@@ -147,20 +148,20 @@ var interceptedData = null;
 		return true;
 	};
 	var inferDurationMs = (text, resetLabel) => {
-		if (/weekly/i.test(text) === true || /code\s*review/i.test(text) === true) return ONE_WEEK_MS;
-		if (/\brate\s+limit\b/i.test(text) === true) return null;
+		if (/weekly/iu.test(text) === true || /code\s*review/iu.test(text) === true) return ONE_WEEK_MS;
+		if (/\brate\s+limit\b/iu.test(text) === true) return null;
 		if (resetLabel !== null) {
-			const hoursMatch = resetLabel.match(/\bin\s+(\d+)\s+hours?\b/i);
+			const hoursMatch = resetLabel.match(/\bin\s+(?<hours>\d+)\s+hours?\b/iu);
 			if (hoursMatch !== null) {
-				const hours = Number.parseInt(hoursMatch[1] ?? "0", 10);
+				const hours = Number.parseInt(hoursMatch.groups?.hours ?? "0", 10);
 				if (Number.isNaN(hours) === false && hours >= 24) return ONE_WEEK_MS;
 			}
 		}
-		if (resetLabel !== null && /\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/i.test(resetLabel) === true) return ONE_WEEK_MS;
+		if (resetLabel !== null && /\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/iu.test(resetLabel) === true) return ONE_WEEK_MS;
 		return null;
 	};
 	var extractResetLabel = (text) => {
-		const label = text.match(/Resets\s+(.+)$/i)?.[1]?.trim();
+		const label = text.match(/Resets\s+(?<label>.+)$/iu)?.groups?.label?.trim();
 		if (label === void 0 || label.length === 0) return null;
 		return label;
 	};
@@ -202,7 +203,7 @@ var interceptedData = null;
 		const articleNodes = document.querySelectorAll("article");
 		for (const articleNode of articleNodes) {
 			const fullText = normalizeWhitespace(articleNode.textContent ?? "");
-			if (/remaining/i.test(fullText) === false) continue;
+			if (/remaining/iu.test(fullText) === false) continue;
 			const resolved = resolveCodexProgressElements(articleNode);
 			if (resolved === null) continue;
 			const headerText = normalizeWhitespace(articleNode.querySelector("header")?.textContent ?? "");
@@ -244,9 +245,9 @@ var interceptedData = null;
 		};
 	};
 	var CLAUDE_SKIP_PATTERNS = [
-		/current\s+session/i,
-		/\$[\d,.]+\s+spent/i,
-		/\bdaily\s+included\b/i
+		/current\s+session/iu,
+		/\$[\d,.]+\s+spent/iu,
+		/\bdaily\s+included\b/iu
 	];
 	var collectClaudeCards = (now) => {
 		const cards = [];
@@ -302,7 +303,7 @@ var interceptedData = null;
 		return lookup;
 	};
 	var findWeeklyReset = (cards) => {
-		for (const card of cards) if (/weekly/i.test(card.fullText) === true && card.resetAt !== null) return card.resetAt;
+		for (const card of cards) if (/weekly/iu.test(card.fullText) === true && card.resetAt !== null) return card.resetAt;
 		return null;
 	};
 	var resolveMissingResetInformation = (cards) => {
@@ -317,7 +318,7 @@ var interceptedData = null;
 					continue;
 				}
 			}
-			if (/code review/i.test(card.fullText) === true && weeklyReset !== null) {
+			if (/code review/iu.test(card.fullText) === true && weeklyReset !== null) {
 				card.durationMs = ONE_WEEK_MS;
 				card.resetAt = weeklyReset;
 			}

@@ -108,8 +108,8 @@ const toWindow = (
 		return null;
 	}
 	return {
-		durationMs: apiWindow.limit_window_seconds * 1_000,
-		resetAt: new Date(apiWindow.reset_at * 1_000),
+		durationMs: apiWindow.limit_window_seconds * 1000,
+		resetAt: new Date(apiWindow.reset_at * 1000),
 	};
 };
 
@@ -117,10 +117,10 @@ const resolveRateLimitWindow = (
 	rateLimit: ApiRateLimit,
 	headerText: string,
 ): CodexRateLimitWindow | null => {
-	if (/weekly/i.test(headerText) === true) {
+	if (/weekly/iu.test(headerText) === true) {
 		return toWindow(rateLimit.secondary_window);
 	}
-	if (/\d+\s*hour/i.test(headerText) === true) {
+	if (/\d+\s*hour/iu.test(headerText) === true) {
 		return toWindow(rateLimit.primary_window);
 	}
 	return null;
@@ -152,7 +152,7 @@ export const findCodexRateLimitWindow = (
 		);
 	}
 
-	if (/code\s*review/i.test(headerText) === true) {
+	if (/code\s*review/iu.test(headerText) === true) {
 		return toWindow(
 			interceptedData.code_review_rate_limit?.primary_window ?? null,
 		);

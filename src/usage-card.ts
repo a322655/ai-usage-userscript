@@ -9,7 +9,7 @@ import { normalizeWhitespace } from "./utils.ts";
 // Constants
 // ---------------------------------------------------------------------------
 
-export const ONE_WEEK_MS: number = 7 * 24 * 60 * 60 * 1_000;
+export const ONE_WEEK_MS: number = 7 * 24 * 60 * 60 * 1000;
 
 const CODEX_TRACK_SELECTOR: string = 'div[class*="bg-[#ebebf0]"]';
 const CODEX_FILL_SELECTOR: string =
@@ -76,18 +76,21 @@ const inferDurationMs = (
 	text: string,
 	resetLabel: string | null,
 ): number | null => {
-	if (/weekly/i.test(text) === true || /code\s*review/i.test(text) === true) {
+	if (/weekly/iu.test(text) === true || /code\s*review/iu.test(text) === true) {
 		return ONE_WEEK_MS;
 	}
-	if (/\brate\s+limit\b/i.test(text) === true) {
+	if (/\brate\s+limit\b/iu.test(text) === true) {
 		return null;
 	}
 	if (resetLabel !== null) {
 		const hoursMatch: RegExpMatchArray | null = resetLabel.match(
-			/\bin\s+(\d+)\s+hours?\b/i,
+			/\bin\s+(?<hours>\d+)\s+hours?\b/iu,
 		);
 		if (hoursMatch !== null) {
-			const hours: number = Number.parseInt(hoursMatch[1] ?? "0", 10);
+			const hours: number = Number.parseInt(
+				hoursMatch.groups?.hours ?? "0",
+				10,
+			);
 			if (Number.isNaN(hours) === false && hours >= 24) {
 				return ONE_WEEK_MS;
 			}
@@ -95,7 +98,7 @@ const inferDurationMs = (
 	}
 	if (
 		resetLabel !== null &&
-		/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/i.test(resetLabel) === true
+		/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/iu.test(resetLabel) === true
 	) {
 		return ONE_WEEK_MS;
 	}
@@ -103,7 +106,9 @@ const inferDurationMs = (
 };
 
 const extractResetLabel = (text: string): string | null => {
-	const label: string | undefined = text.match(/Resets\s+(.+)$/i)?.[1]?.trim();
+	const label: string | undefined = text
+		.match(/Resets\s+(?<label>.+)$/iu)
+		?.groups?.label?.trim();
 	if (label === undefined || label.length === 0) {
 		return null;
 	}
@@ -195,7 +200,7 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 
 	for (const articleNode of articleNodes) {
 		const fullText: string = normalizeWhitespace(articleNode.textContent ?? "");
-		if (/remaining/i.test(fullText) === false) {
+		if (/remaining/iu.test(fullText) === false) {
 			continue;
 		}
 
@@ -283,9 +288,9 @@ const resolveClaudeProgressElements = (
 };
 
 const CLAUDE_SKIP_PATTERNS: readonly RegExp[] = [
-	/current\s+session/i,
-	/\$[\d,.]+\s+spent/i,
-	/\bdaily\s+included\b/i,
+	/current\s+session/iu,
+	/\$[\d,.]+\s+spent/iu,
+	/\bdaily\s+included\b/iu,
 ];
 
 const collectClaudeCards = (now: Date): UsageCard[] => {
@@ -406,7 +411,7 @@ const buildResetByDurationLookup = (cards: UsageCard[]): Map<number, Date> => {
 
 const findWeeklyReset = (cards: UsageCard[]): Date | null => {
 	for (const card of cards) {
-		if (/weekly/i.test(card.fullText) === true && card.resetAt !== null) {
+		if (/weekly/iu.test(card.fullText) === true && card.resetAt !== null) {
 			return card.resetAt;
 		}
 	}
@@ -433,7 +438,7 @@ export const resolveMissingResetInformation = (cards: UsageCard[]): void => {
 			}
 		}
 
-		if (/code review/i.test(card.fullText) === true && weeklyReset !== null) {
+		if (/code review/iu.test(card.fullText) === true && weeklyReset !== null) {
 			card.durationMs = ONE_WEEK_MS;
 			card.resetAt = weeklyReset;
 		}
