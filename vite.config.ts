@@ -8,7 +8,7 @@ export default defineConfig({
 			userscript: {
 				name: "AI Usage",
 				namespace: "https://github.com/a322655",
-				version: "1.0.3",
+				version: "1.1.0",
 				description:
 					"Show pace dividers on AI usage pages (Codex, Claude, Kimi Code)",
 				author: "WindFade",
@@ -25,7 +25,6 @@ export default defineConfig({
 					"https://www.kimi.com/code/console*",
 				],
 				"run-at": "document-start",
-				grant: "none",
 			},
 		}),
 	],

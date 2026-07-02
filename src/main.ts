@@ -1,4 +1,5 @@
 import "./codex-api.ts";
+import { readDisabledLabels, syncSettingsMenu } from "./settings.ts";
 import {
 	collectUsageCards,
 	resolveMissingResetInformation,
@@ -165,6 +166,8 @@ const renderPaceDividers = (): void => {
 		resolveMissingResetInformation(cards);
 	}
 
+	const disabledLabels: readonly string[] = readDisabledLabels();
+	const paceableLabels: string[] = [];
 	for (const card of cards) {
 		const targetRemainingRatio: number | null = computeTargetRemainingRatio(
 			card,
@@ -175,8 +178,16 @@ const renderPaceDividers = (): void => {
 			continue;
 		}
 
+		paceableLabels.push(card.label);
+		if (disabledLabels.includes(card.label) === true) {
+			removeDividerElement(card.trackContainerElement);
+			continue;
+		}
+
 		updateDividerElement(card, targetRemainingRatio);
 	}
+
+	syncSettingsMenu(paceableLabels, disabledLabels, scheduleRender);
 };
 
 let renderScheduled: boolean = false;
