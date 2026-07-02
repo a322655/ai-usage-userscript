@@ -119,9 +119,11 @@ const parseTimeOnlyLabel = (resetLabel: string, now: Date): Date | null => {
 	return candidateDate;
 };
 
-const parseRelativeTimeLabel = (resetLabel: string, now: Date): Date | null => {
+// Exported for duration inference in card-info.ts, so the label grammar
+// (including hr/min abbreviations used by claude.ai) lives in one place.
+export const parseRelativeDurationMs = (resetLabel: string): number | null => {
 	const relativeMatch: RegExpMatchArray | null = resetLabel.match(
-		/^in\s+(?:(?<days>\d+)\s+days?\s*)?(?:(?<hours>\d+)\s+hours?\s*)?(?:(?<minutes>\d+)\s+minutes?)?\s*$/iu,
+		/^in\s+(?:(?<days>\d+)\s+days?\s*)?(?:(?<hours>\d+)\s+(?:hours?|hrs?)\s*)?(?:(?<minutes>\d+)\s+(?:minutes?|mins?))?\s*$/iu,
 	);
 	if (relativeMatch === null) {
 		return null;
@@ -138,8 +140,15 @@ const parseRelativeTimeLabel = (resetLabel: string, now: Date): Date | null => {
 	if (totalMs <= 0) {
 		return null;
 	}
+	return totalMs;
+};
 
-	return new Date(now.getTime() + totalMs);
+const parseRelativeTimeLabel = (resetLabel: string, now: Date): Date | null => {
+	const durationMs: number | null = parseRelativeDurationMs(resetLabel);
+	if (durationMs === null) {
+		return null;
+	}
+	return new Date(now.getTime() + durationMs);
 };
 
 // ---------------------------------------------------------------------------
