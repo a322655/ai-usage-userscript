@@ -1,15 +1,18 @@
 import {
+	deriveCardLabel,
+	deriveCodexCardLabel,
+	ONE_WEEK_MS,
+	parseResetInfo,
+} from "./card-info.ts";
+import {
 	type CodexRateLimitWindow,
 	findCodexRateLimitWindow,
 } from "./codex-api.ts";
-import { parseResetDate } from "./reset-date.ts";
 import { normalizeWhitespace } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-export const ONE_WEEK_MS: number = 7 * 24 * 60 * 60 * 1000;
 
 const CODEX_TRACK_SELECTOR: string = 'div[class*="bg-[#ebebf0]"]';
 const CODEX_FILL_SELECTOR: string =
@@ -17,7 +20,9 @@ const CODEX_FILL_SELECTOR: string =
 
 const CLAUDE_TRACK_SELECTOR: string =
 	'div[class~="bg-alpha-2"][class~="h-2"][class~="rounded-full"]';
-const CLAUDE_FILL_SELECTOR: string = 'div[class~="bg-fill-accent"]';
+// Fill color shifts with usage level (accent, warning, ...), so match the
+// bg-fill- prefix instead of one concrete color.
+const CLAUDE_FILL_SELECTOR: string = 'div[class*="bg-fill-"]';
 
 const KIMI_CARD_SELECTOR: string = ".stats-card";
 const KIMI_BAR_SELECTOR: string = ".stats-card-progress-bar";
@@ -31,18 +36,11 @@ type FillMeaning = "remaining" | "used";
 
 export interface UsageCard {
 	fullText: string;
-	trackElement: HTMLElement;
-	fillElement: HTMLElement;
+	label: string;
 	trackContainerElement: HTMLElement;
 	resetAt: Date | null;
 	durationMs: number | null;
 	fillMeaning: FillMeaning;
-}
-
-interface ProgressElements {
-	trackElement: HTMLElement;
-	fillElement: HTMLElement;
-	trackContainerElement: HTMLElement;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,100 +67,12 @@ const validateTrackGeometry = (
 };
 
 // ---------------------------------------------------------------------------
-// Reset / duration inference
-// ---------------------------------------------------------------------------
-
-const inferDurationMs = (
-	text: string,
-	resetLabel: string | null,
-): number | null => {
-	if (/weekly/iu.test(text) === true || /code\s*review/iu.test(text) === true) {
-		return ONE_WEEK_MS;
-	}
-	if (/\brate\s+limit\b/iu.test(text) === true) {
-		return null;
-	}
-	if (resetLabel !== null) {
-		const hoursMatch: RegExpMatchArray | null = resetLabel.match(
-			/\bin\s+(?<hours>\d+)\s+hours?\b/iu,
-		);
-		if (hoursMatch !== null) {
-			const hours: number = Number.parseInt(
-				hoursMatch.groups?.hours ?? "0",
-				10,
-			);
-			if (Number.isNaN(hours) === false && hours >= 24) {
-				return ONE_WEEK_MS;
-			}
-		}
-	}
-	if (
-		resetLabel !== null &&
-		/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/iu.test(resetLabel) === true
-	) {
-		return ONE_WEEK_MS;
-	}
-	return null;
-};
-
-const extractResetLabel = (text: string): string | null => {
-	const label: string | undefined = text
-		.match(/Resets\s+(?<label>.+)$/iu)
-		?.groups?.label?.trim();
-	if (label === undefined || label.length === 0) {
-		return null;
-	}
-	return label;
-};
-
-const findResetLabel = (
-	containerElement: HTMLElement,
-	fullText: string,
-): string | null => {
-	const candidateNodes: NodeListOf<Element> =
-		containerElement.querySelectorAll("p, span, div");
-	for (const candidateNode of candidateNodes) {
-		if (candidateNode instanceof HTMLElement === false) {
-			continue;
-		}
-
-		const label: string | null = extractResetLabel(
-			normalizeWhitespace(candidateNode.textContent ?? ""),
-		);
-		if (label !== null) {
-			return label;
-		}
-	}
-
-	return extractResetLabel(fullText);
-};
-
-const parseResetInfo = (
-	containerElement: HTMLElement,
-	fullText: string,
-	durationSourceText: string,
-	now: Date,
-): { resetAt: Date | null; durationMs: number | null } => {
-	const resetLabel: string | null = findResetLabel(containerElement, fullText);
-	const resetAt: Date | null =
-		resetLabel === null ? null : parseResetDate(resetLabel, now);
-	const durationMs: number | null = inferDurationMs(
-		durationSourceText,
-		resetLabel,
-	);
-	return {
-		resetAt: resetAt,
-		durationMs: durationMs,
-	};
-};
-
-// ---------------------------------------------------------------------------
 // Codex card collection
 // ---------------------------------------------------------------------------
 
-const resolveCodexProgressElements = (
+const resolveCodexTrackContainer = (
 	articleElement: HTMLElement,
-): ProgressElements | null => {
+): HTMLElement | null => {
 	const trackNode: Element | null =
 		articleElement.querySelector(CODEX_TRACK_SELECTOR);
 	if (trackNode instanceof HTMLElement === false) {
@@ -182,11 +92,7 @@ const resolveCodexProgressElements = (
 			continue;
 		}
 		if (validateTrackGeometry(trackRect, candidate.getBoundingClientRect())) {
-			return {
-				trackElement: trackNode,
-				fillElement: candidate,
-				trackContainerElement: trackContainerNode,
-			};
+			return trackContainerNode;
 		}
 	}
 
@@ -204,9 +110,9 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 			continue;
 		}
 
-		const resolved: ProgressElements | null =
-			resolveCodexProgressElements(articleNode);
-		if (resolved === null) {
+		const trackContainerElement: HTMLElement | null =
+			resolveCodexTrackContainer(articleNode);
+		if (trackContainerElement === null) {
 			continue;
 		}
 
@@ -215,13 +121,15 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 		const headerText: string = normalizeWhitespace(
 			headerElement?.textContent ?? "",
 		);
+		const label: string = deriveCodexCardLabel(headerText, fullText);
 
 		const apiWindow: CodexRateLimitWindow | null =
 			findCodexRateLimitWindow(headerText);
 		if (apiWindow !== null) {
 			cards.push({
 				fullText: fullText,
-				...resolved,
+				label: label,
+				trackContainerElement: trackContainerElement,
 				resetAt: apiWindow.resetAt,
 				durationMs: apiWindow.durationMs,
 				fillMeaning: "remaining",
@@ -239,7 +147,8 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 		);
 		cards.push({
 			fullText: fullText,
-			...resolved,
+			label: label,
+			trackContainerElement: trackContainerElement,
 			resetAt: resetAt,
 			durationMs: durationMs,
 			fillMeaning: "remaining",
@@ -253,9 +162,14 @@ const collectCodexCards = (now: Date): UsageCard[] => {
 // Claude card collection
 // ---------------------------------------------------------------------------
 
+interface ClaudeProgressElements {
+	trackContainerElement: HTMLElement;
+	rowElement: HTMLElement;
+}
+
 const resolveClaudeProgressElements = (
 	candidateNode: HTMLElement,
-): (ProgressElements & { rowElement: HTMLElement }) | null => {
+): ClaudeProgressElements | null => {
 	const fillNode: Element | null =
 		candidateNode.querySelector(CLAUDE_FILL_SELECTOR);
 	if (fillNode instanceof HTMLElement === false) {
@@ -280,15 +194,12 @@ const resolveClaudeProgressElements = (
 	}
 
 	return {
-		trackElement: candidateNode,
-		fillElement: fillNode,
 		trackContainerElement: trackContainerNode,
 		rowElement: rowNode,
 	};
 };
 
 const CLAUDE_SKIP_PATTERNS: readonly RegExp[] = [
-	/current\s+session/iu,
 	/\$[\d,.]+\s+spent/iu,
 	/\bdaily\s+included\b/iu,
 ];
@@ -320,17 +231,22 @@ const collectClaudeCards = (now: Date): UsageCard[] => {
 			continue;
 		}
 
+		// Row text lacks the window kind ("All models Resets in 23 hr"), but the
+		// enclosing section heading carries it ("Weekly limits").
+		const sectionHeadingText: string = normalizeWhitespace(
+			candidateNode.closest("section")?.querySelector("h1, h2, h3, h4")
+				?.textContent ?? "",
+		);
 		const { resetAt, durationMs } = parseResetInfo(
 			resolved.rowElement,
 			rowText,
-			rowText,
+			`${sectionHeadingText} ${rowText}`,
 			now,
 		);
 
 		cards.push({
 			fullText: rowText,
-			trackElement: resolved.trackElement,
-			fillElement: resolved.fillElement,
+			label: deriveCardLabel(rowText),
 			trackContainerElement: resolved.trackContainerElement,
 			resetAt: resetAt,
 			durationMs: durationMs,
@@ -380,8 +296,7 @@ const collectKimiCards = (now: Date): UsageCard[] => {
 
 		cards.push({
 			fullText: fullText,
-			trackElement: barNode,
-			fillElement: fillNode,
+			label: deriveCardLabel(fullText),
 			trackContainerElement: barNode,
 			resetAt: resetAt,
 			durationMs: durationMs,
@@ -438,7 +353,10 @@ export const resolveMissingResetInformation = (cards: UsageCard[]): void => {
 			}
 		}
 
-		if (/code review/iu.test(card.fullText) === true && weeklyReset !== null) {
+		if (
+			/code\s*review/iu.test(card.fullText) === true &&
+			weeklyReset !== null
+		) {
 			card.durationMs = ONE_WEEK_MS;
 			card.resetAt = weeklyReset;
 		}
