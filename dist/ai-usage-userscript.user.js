@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI Usage
 // @namespace    https://github.com/a322655
-// @version      1.0.3
+// @version      1.1.0
 // @author       WindFade
 // @description  Show pace dividers on AI usage pages (Codex, Claude, Kimi Code)
 // @license      MIT
@@ -12,12 +12,21 @@
 // @match        https://chatgpt.com/codex/cloud/settings/analytics*
 // @match        https://claude.ai/settings/usage*
 // @match        https://www.kimi.com/code/console*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_setValue
+// @grant        GM_unregisterMenuCommand
+// @grant        unsafeWindow
 // @run-at       document-start
 // ==/UserScript==
 
 (function() {
 	"use strict";
+	var _GM_getValue = (() => typeof GM_getValue != "undefined" ? GM_getValue : void 0)();
+	var _GM_registerMenuCommand = (() => typeof GM_registerMenuCommand != "undefined" ? GM_registerMenuCommand : void 0)();
+	var _GM_setValue = (() => typeof GM_setValue != "undefined" ? GM_setValue : void 0)();
+	var _GM_unregisterMenuCommand = (() => typeof GM_unregisterMenuCommand != "undefined" ? GM_unregisterMenuCommand : void 0)();
+	var _unsafeWindow = (() => typeof unsafeWindow != "undefined" ? unsafeWindow : void 0)();
 	var interceptedData = null;
 	var USAGE_API_PATH = "/backend-api/wham/usage";
 	var isUsageApiUrl = (url) => url.includes(USAGE_API_PATH) === true && url.includes("daily") === false && url.includes("credit") === false;
@@ -27,13 +36,14 @@
 		return "";
 	};
 	var handleInterceptedResponse = (response) => {
+		if (response.ok === false) return;
 		response.clone().json().then((data) => {
 			interceptedData = data;
 		}).catch(() => void 0);
 	};
 	var installFetchInterceptor = () => {
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = new Proxy(originalFetch, { apply: (target, thisArg, args) => {
+		const originalFetch = _unsafeWindow.fetch;
+		_unsafeWindow.fetch = new Proxy(originalFetch, { apply: (target, thisArg, args) => {
 			const result = Reflect.apply(target, thisArg, args);
 			if (isUsageApiUrl(extractUrlFromInput(args[0])) === true) result.then(handleInterceptedResponse).catch(() => void 0);
 			return result;
@@ -59,12 +69,38 @@
 	};
 	var findCodexRateLimitWindow = (headerText) => {
 		if (interceptedData === null) return null;
-		if (interceptedData.additional_rate_limits !== void 0) return findAdditionalModelWindow(interceptedData.additional_rate_limits, headerText);
+		if (interceptedData.additional_rate_limits !== void 0) {
+			const modelWindow = findAdditionalModelWindow(interceptedData.additional_rate_limits, headerText);
+			if (modelWindow !== null) return modelWindow;
+		}
 		if (/code\s*review/iu.test(headerText) === true) return toWindow(interceptedData.code_review_rate_limit?.primary_window ?? null);
 		return resolveRateLimitWindow(interceptedData.rate_limit ?? {
 			primary_window: null,
 			secondary_window: null
 		}, headerText);
+	};
+	var DISABLED_LABELS_KEY = `dividerDisabledLabels:${globalThis.location.hostname}`;
+	var readDisabledLabels = () => {
+		const stored = _GM_getValue(DISABLED_LABELS_KEY, []);
+		if (Array.isArray(stored) === false) return [];
+		return stored.filter((entry) => typeof entry === "string");
+	};
+	var toggleDivider = (label) => {
+		const disabledLabels = readDisabledLabels();
+		_GM_setValue(DISABLED_LABELS_KEY, disabledLabels.includes(label) === true ? disabledLabels.filter((entry) => entry !== label) : [...disabledLabels, label]);
+	};
+	var registeredMenuIds = [];
+	var lastMenuSignature = null;
+	var syncSettingsMenu = (labels, disabledLabels, onToggle) => {
+		const uniqueLabels = [...new Set(labels)];
+		const menuSignature = JSON.stringify([uniqueLabels, disabledLabels]);
+		if (menuSignature === lastMenuSignature) return;
+		lastMenuSignature = menuSignature;
+		for (const menuId of registeredMenuIds) _GM_unregisterMenuCommand(menuId);
+		registeredMenuIds = uniqueLabels.map((label) => _GM_registerMenuCommand(`${disabledLabels.includes(label) === true ? "✗" : "✓"} ${label}`, () => {
+			toggleDivider(label);
+			onToggle();
+		}));
 	};
 	var DAY_ABBR_TO_INDEX = {
 		sun: 0,
@@ -111,15 +147,20 @@
 		if (candidateDate.getTime() <= now.getTime()) candidateDate.setDate(candidateDate.getDate() + 1);
 		return candidateDate;
 	};
-	var parseRelativeTimeLabel = (resetLabel, now) => {
-		const relativeMatch = resetLabel.match(/^in\s+(?:(?<days>\d+)\s+days?\s*)?(?:(?<hours>\d+)\s+hours?\s*)?(?:(?<minutes>\d+)\s+minutes?)?\s*$/iu);
+	var parseRelativeDurationMs = (resetLabel) => {
+		const relativeMatch = resetLabel.match(/^in\s+(?:(?<days>\d+)\s+days?\s*)?(?:(?<hours>\d+)\s+(?:hours?|hrs?)\s*)?(?:(?<minutes>\d+)\s+(?:minutes?|mins?))?\s*$/iu);
 		if (relativeMatch === null) return null;
 		const days = Number.parseInt(relativeMatch.groups?.days ?? "0", 10) || 0;
 		const hours = Number.parseInt(relativeMatch.groups?.hours ?? "0", 10) || 0;
 		const minutes = Number.parseInt(relativeMatch.groups?.minutes ?? "0", 10) || 0;
 		const totalMs = (days * 24 * 60 + hours * 60 + minutes) * 60 * 1e3;
 		if (totalMs <= 0) return null;
-		return new Date(now.getTime() + totalMs);
+		return totalMs;
+	};
+	var parseRelativeTimeLabel = (resetLabel, now) => {
+		const durationMs = parseRelativeDurationMs(resetLabel);
+		if (durationMs === null) return null;
+		return new Date(now.getTime() + durationMs);
 	};
 	var parseResetDate = (resetLabel, now) => {
 		const directTimestamp = Date.parse(resetLabel);
@@ -133,29 +174,50 @@
 	};
 	var normalizeWhitespace = (value) => value.replace(/\s+/gu, " ").trim();
 	var ONE_WEEK_MS = 10080 * 60 * 1e3;
-	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
-	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#\"]:not([class*=\"bg-[#ebebf0]\"])";
-	var CLAUDE_TRACK_SELECTOR = "div[class~=\"bg-alpha-2\"][class~=\"h-2\"][class~=\"rounded-full\"]";
-	var CLAUDE_FILL_SELECTOR = "div[class~=\"bg-fill-accent\"]";
-	var KIMI_CARD_SELECTOR = ".stats-card";
-	var KIMI_BAR_SELECTOR = ".stats-card-progress-bar";
-	var KIMI_FILL_SELECTOR = ".stats-card-progress-filled";
-	var validateTrackGeometry = (trackRect, fillRect) => {
-		if (trackRect.width < 120 || trackRect.height < 6 || trackRect.height > 18) return false;
-		if (fillRect.height < 4 || fillRect.height > 18) return false;
-		if (Math.abs(fillRect.top - trackRect.top) > 2) return false;
-		if (fillRect.width < 0 || fillRect.width > trackRect.width + 1) return false;
-		return true;
+	var ONE_HOUR_MS = 3600 * 1e3;
+	var FIVE_HOURS_MS = 5 * ONE_HOUR_MS;
+	var MAX_FALLBACK_LABEL_LENGTH = 40;
+	var LABEL_BOUNDARY_PATTERNS = [
+		/resets/iu,
+		/you've/iu,
+		/\d/u,
+		/\$/u
+	];
+	var sliceBeforeEarliestBoundary = (text, patterns) => {
+		let boundaryIndex = text.length;
+		for (const pattern of patterns) {
+			const matchIndex = text.search(pattern);
+			if (matchIndex >= 0 && matchIndex < boundaryIndex) boundaryIndex = matchIndex;
+		}
+		return text.slice(0, boundaryIndex).trim();
+	};
+	var deriveCardLabel = (text) => {
+		const label = sliceBeforeEarliestBoundary(text, LABEL_BOUNDARY_PATTERNS);
+		if (label.length > 0) return label;
+		return text.slice(0, MAX_FALLBACK_LABEL_LENGTH).trim();
+	};
+	var CODEX_LABEL_BOUNDARY_PATTERNS = [/resets/iu, /\d+(?:\.\d+)?\s*%/u];
+	var deriveCodexCardLabel = (headerText, fullText) => {
+		const label = sliceBeforeEarliestBoundary(headerText, CODEX_LABEL_BOUNDARY_PATTERNS);
+		if (label.length > 0) return label;
+		return deriveCardLabel(fullText);
+	};
+	var parseHourWindowMs = (text) => {
+		const hourWindowMatch = text.match(/\b(?<hours>\d+)[\s-]*hour\s+usage\s+limit\b/iu);
+		if (hourWindowMatch === null) return null;
+		const hours = Number.parseInt(hourWindowMatch.groups?.hours ?? "0", 10);
+		if (Number.isNaN(hours) === true || hours <= 0) return null;
+		return hours * ONE_HOUR_MS;
 	};
 	var inferDurationMs = (text, resetLabel) => {
 		if (/weekly/iu.test(text) === true || /code\s*review/iu.test(text) === true) return ONE_WEEK_MS;
 		if (/\brate\s+limit\b/iu.test(text) === true) return null;
+		if (/\bcurrent\s+session/iu.test(text) === true) return FIVE_HOURS_MS;
+		const hourWindowMs = parseHourWindowMs(text);
+		if (hourWindowMs !== null) return hourWindowMs;
 		if (resetLabel !== null) {
-			const hoursMatch = resetLabel.match(/\bin\s+(?<hours>\d+)\s+hours?\b/iu);
-			if (hoursMatch !== null) {
-				const hours = Number.parseInt(hoursMatch.groups?.hours ?? "0", 10);
-				if (Number.isNaN(hours) === false && hours >= 24) return ONE_WEEK_MS;
-			}
+			const relativeMs = parseRelativeDurationMs(resetLabel);
+			if (relativeMs !== null && relativeMs >= 24 * ONE_HOUR_MS) return ONE_WEEK_MS;
 		}
 		if (resetLabel !== null && /\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*/iu.test(resetLabel) === true) return ONE_WEEK_MS;
 		return null;
@@ -181,7 +243,21 @@
 			durationMs: inferDurationMs(durationSourceText, resetLabel)
 		};
 	};
-	var resolveCodexProgressElements = (articleElement) => {
+	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
+	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#\"]:not([class*=\"bg-[#ebebf0]\"])";
+	var CLAUDE_TRACK_SELECTOR = "div[class~=\"bg-alpha-2\"][class~=\"h-2\"][class~=\"rounded-full\"]";
+	var CLAUDE_FILL_SELECTOR = "div[class*=\"bg-fill-\"]";
+	var KIMI_CARD_SELECTOR = ".stats-card";
+	var KIMI_BAR_SELECTOR = ".stats-card-progress-bar";
+	var KIMI_FILL_SELECTOR = ".stats-card-progress-filled";
+	var validateTrackGeometry = (trackRect, fillRect) => {
+		if (trackRect.width < 120 || trackRect.height < 6 || trackRect.height > 18) return false;
+		if (fillRect.height < 4 || fillRect.height > 18) return false;
+		if (Math.abs(fillRect.top - trackRect.top) > 2) return false;
+		if (fillRect.width < 0 || fillRect.width > trackRect.width + 1) return false;
+		return true;
+	};
+	var resolveCodexTrackContainer = (articleElement) => {
 		const trackNode = articleElement.querySelector(CODEX_TRACK_SELECTOR);
 		if (trackNode instanceof HTMLElement === false) return null;
 		const trackContainerNode = trackNode.parentElement;
@@ -190,11 +266,7 @@
 		const fillCandidates = trackContainerNode.querySelectorAll(CODEX_FILL_SELECTOR);
 		for (const candidate of fillCandidates) {
 			if (candidate instanceof HTMLElement === false) continue;
-			if (validateTrackGeometry(trackRect, candidate.getBoundingClientRect())) return {
-				trackElement: trackNode,
-				fillElement: candidate,
-				trackContainerElement: trackContainerNode
-			};
+			if (validateTrackGeometry(trackRect, candidate.getBoundingClientRect())) return trackContainerNode;
 		}
 		return null;
 	};
@@ -204,14 +276,16 @@
 		for (const articleNode of articleNodes) {
 			const fullText = normalizeWhitespace(articleNode.textContent ?? "");
 			if (/remaining/iu.test(fullText) === false) continue;
-			const resolved = resolveCodexProgressElements(articleNode);
-			if (resolved === null) continue;
+			const trackContainerElement = resolveCodexTrackContainer(articleNode);
+			if (trackContainerElement === null) continue;
 			const headerText = normalizeWhitespace(articleNode.querySelector("header")?.textContent ?? "");
+			const label = deriveCodexCardLabel(headerText, fullText);
 			const apiWindow = findCodexRateLimitWindow(headerText);
 			if (apiWindow !== null) {
 				cards.push({
 					fullText,
-					...resolved,
+					label,
+					trackContainerElement,
 					resetAt: apiWindow.resetAt,
 					durationMs: apiWindow.durationMs,
 					fillMeaning: "remaining"
@@ -221,7 +295,8 @@
 			const { resetAt, durationMs } = parseResetInfo(articleNode, fullText, headerText.length > 0 ? headerText : fullText, now);
 			cards.push({
 				fullText,
-				...resolved,
+				label,
+				trackContainerElement,
 				resetAt,
 				durationMs,
 				fillMeaning: "remaining"
@@ -238,17 +313,11 @@
 		const rowNode = trackContainerNode.parentElement?.parentElement ?? null;
 		if (rowNode instanceof HTMLElement === false) return null;
 		return {
-			trackElement: candidateNode,
-			fillElement: fillNode,
 			trackContainerElement: trackContainerNode,
 			rowElement: rowNode
 		};
 	};
-	var CLAUDE_SKIP_PATTERNS = [
-		/current\s+session/iu,
-		/\$[\d,.]+\s+spent/iu,
-		/\bdaily\s+included\b/iu
-	];
+	var CLAUDE_SKIP_PATTERNS = [/\$[\d,.]+\s+spent/iu, /\bdaily\s+included\b/iu];
 	var collectClaudeCards = (now) => {
 		const cards = [];
 		const trackCandidates = document.querySelectorAll(CLAUDE_TRACK_SELECTOR);
@@ -258,11 +327,11 @@
 			if (resolved === null) continue;
 			const rowText = normalizeWhitespace(resolved.rowElement.textContent ?? "");
 			if (CLAUDE_SKIP_PATTERNS.some((pattern) => pattern.test(rowText)) === true) continue;
-			const { resetAt, durationMs } = parseResetInfo(resolved.rowElement, rowText, rowText, now);
+			const sectionHeadingText = normalizeWhitespace(candidateNode.closest("section")?.querySelector("h1, h2, h3, h4")?.textContent ?? "");
+			const { resetAt, durationMs } = parseResetInfo(resolved.rowElement, rowText, `${sectionHeadingText} ${rowText}`, now);
 			cards.push({
 				fullText: rowText,
-				trackElement: resolved.trackElement,
-				fillElement: resolved.fillElement,
+				label: deriveCardLabel(rowText),
 				trackContainerElement: resolved.trackContainerElement,
 				resetAt,
 				durationMs,
@@ -284,8 +353,7 @@
 			const { resetAt, durationMs } = parseResetInfo(cardNode, fullText, fullText, now);
 			cards.push({
 				fullText,
-				trackElement: barNode,
-				fillElement: fillNode,
+				label: deriveCardLabel(fullText),
 				trackContainerElement: barNode,
 				resetAt,
 				durationMs,
@@ -318,7 +386,7 @@
 					continue;
 				}
 			}
-			if (/code review/iu.test(card.fullText) === true && weeklyReset !== null) {
+			if (/code\s*review/iu.test(card.fullText) === true && weeklyReset !== null) {
 				card.durationMs = ONE_WEEK_MS;
 				card.resetAt = weeklyReset;
 			}
@@ -406,14 +474,22 @@
 		const now = new Date();
 		const cards = collectUsageCards(now);
 		if (globalThis.location.hostname !== "chatgpt.com") resolveMissingResetInformation(cards);
+		const disabledLabels = readDisabledLabels();
+		const paceableLabels = [];
 		for (const card of cards) {
 			const targetRemainingRatio = computeTargetRemainingRatio(card, now);
 			if (targetRemainingRatio === null) {
 				removeDividerElement(card.trackContainerElement);
 				continue;
 			}
+			paceableLabels.push(card.label);
+			if (disabledLabels.includes(card.label) === true) {
+				removeDividerElement(card.trackContainerElement);
+				continue;
+			}
 			updateDividerElement(card, targetRemainingRatio);
 		}
+		syncSettingsMenu(paceableLabels, disabledLabels, scheduleRender);
 	};
 	var renderScheduled = false;
 	var scheduleRender = () => {
