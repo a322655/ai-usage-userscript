@@ -99,6 +99,9 @@ const inferDurationMs = (
 	if (/weekly/iu.test(text) === true || /code\s*review/iu.test(text) === true) {
 		return ONE_WEEK_MS;
 	}
+	if (/\brate\s+limit\s+details\b/iu.test(text) === true) {
+		return FIVE_HOURS_MS;
+	}
 	if (/\brate\s+limit\b/iu.test(text) === true) {
 		return null;
 	}
