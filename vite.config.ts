@@ -22,6 +22,7 @@ export default defineConfig({
 				match: [
 					"https://chatgpt.com/codex/cloud/settings/analytics*",
 					"https://claude.ai/settings/usage*",
+					"https://claude.ai/new*",
 					"https://www.kimi.com/code/console*",
 				],
 				"run-at": "document-start",

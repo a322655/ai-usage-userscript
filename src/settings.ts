@@ -40,6 +40,14 @@ const toggleDivider = (label: string): void => {
 let registeredMenuIds: ReadonlyArray<string | number> = [];
 let lastMenuSignature: string | null = null;
 
+export const clearSettingsMenu = (): void => {
+	for (const menuId of registeredMenuIds) {
+		GM_unregisterMenuCommand(menuId);
+	}
+	registeredMenuIds = [];
+	lastMenuSignature = null;
+};
+
 export const syncSettingsMenu = (
 	labels: readonly string[],
 	disabledLabels: readonly string[],
@@ -50,11 +58,9 @@ export const syncSettingsMenu = (
 	if (menuSignature === lastMenuSignature) {
 		return;
 	}
+	clearSettingsMenu();
 	lastMenuSignature = menuSignature;
 
-	for (const menuId of registeredMenuIds) {
-		GM_unregisterMenuCommand(menuId);
-	}
 	registeredMenuIds = uniqueLabels.map((label: string): string | number =>
 		GM_registerMenuCommand(
 			`${disabledLabels.includes(label) === true ? "✗" : "✓"} ${label}`,

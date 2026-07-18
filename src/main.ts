@@ -1,5 +1,9 @@
 import "./codex-api.ts";
-import { readDisabledLabels, syncSettingsMenu } from "./settings.ts";
+import {
+	clearSettingsMenu,
+	readDisabledLabels,
+	syncSettingsMenu,
+} from "./settings.ts";
 import {
 	collectUsageCards,
 	resolveMissingResetInformation,
@@ -17,6 +21,18 @@ const UPDATE_INTERVAL_MS: number = 30_000;
 const DIVIDER_COLOR: string = "rgb(249, 115, 22)";
 const DIVIDER_HIT_AREA_WIDTH: string = "12px";
 const DIVIDER_BAR_WIDTH: string = "2px";
+
+const isTargetViewActive = (): boolean => {
+	if (globalThis.location.hostname !== "claude.ai") {
+		return true;
+	}
+
+	const { hash, pathname } = globalThis.location;
+	return (
+		pathname.startsWith("/settings/usage") ||
+		(pathname === "/new" && hash === "#settings/usage")
+	);
+};
 
 // ---------------------------------------------------------------------------
 // Pace computation
@@ -92,10 +108,14 @@ const ensureBarElement = (dividerElement: HTMLDivElement): HTMLDivElement => {
 };
 
 const removeDividerElement = (trackContainer: HTMLElement): void => {
-	const dividerElement: HTMLDivElement | null = trackContainer.querySelector(
+	trackContainer.querySelector(`.${DIVIDER_CLASS}`)?.remove();
+};
+
+const removeAllDividerElements = (): void => {
+	const dividerElements: NodeListOf<HTMLElement> = document.querySelectorAll(
 		`.${DIVIDER_CLASS}`,
 	);
-	if (dividerElement !== null) {
+	for (const dividerElement of dividerElements) {
 		dividerElement.remove();
 	}
 };
@@ -159,7 +179,7 @@ const updateDividerElement = (
 // Render orchestration
 // ---------------------------------------------------------------------------
 
-const renderPaceDividers = (): void => {
+const renderPaceDividers = (scheduleRender: () => void): void => {
 	const now: Date = new Date();
 	const cards: UsageCard[] = collectUsageCards(now);
 	if (globalThis.location.hostname !== "chatgpt.com") {
@@ -190,39 +210,90 @@ const renderPaceDividers = (): void => {
 	syncSettingsMenu(paceableLabels, disabledLabels, scheduleRender);
 };
 
-let renderScheduled: boolean = false;
-
-const scheduleRender = (): void => {
-	if (renderScheduled === true) {
-		return;
-	}
-
-	renderScheduled = true;
-	globalThis.requestAnimationFrame((): void => {
-		renderScheduled = false;
-		renderPaceDividers();
-	});
-};
-
 // ---------------------------------------------------------------------------
-// Auto-refresh and bootstrap
+// Lifecycle
 // ---------------------------------------------------------------------------
 
-const setupAutoRefresh = (): void => {
+type Teardown = () => void;
+
+const createRenderSession = (): Teardown => {
+	let active: boolean = true;
+	let animationFrameId: number | null = null;
+
+	const scheduleRender = (): void => {
+		if (active === false || animationFrameId !== null) {
+			return;
+		}
+
+		animationFrameId = globalThis.requestAnimationFrame((): void => {
+			animationFrameId = null;
+			if (active === true) {
+				renderPaceDividers(scheduleRender);
+			}
+		});
+	};
+
 	const observer: MutationObserver = new MutationObserver(scheduleRender);
 	observer.observe(document.body, {
 		childList: true,
 		subtree: true,
 	});
 
-	globalThis.setInterval(scheduleRender, UPDATE_INTERVAL_MS);
-	globalThis.addEventListener("resize", scheduleRender);
-
-	document.addEventListener("visibilitychange", (): void => {
+	const intervalId: ReturnType<typeof globalThis.setInterval> =
+		globalThis.setInterval(scheduleRender, UPDATE_INTERVAL_MS);
+	const timeoutIds: readonly ReturnType<typeof globalThis.setTimeout>[] = [
+		globalThis.setTimeout(scheduleRender, 300),
+		globalThis.setTimeout(scheduleRender, 2000),
+	];
+	const handleVisibilityChange = (): void => {
 		if (document.visibilityState === "visible") {
 			scheduleRender();
 		}
-	});
+	};
+
+	globalThis.addEventListener("resize", scheduleRender);
+	document.addEventListener("visibilitychange", handleVisibilityChange);
+	scheduleRender();
+
+	return (): void => {
+		active = false;
+		observer.disconnect();
+		globalThis.clearInterval(intervalId);
+		for (const timeoutId of timeoutIds) {
+			globalThis.clearTimeout(timeoutId);
+		}
+		if (animationFrameId !== null) {
+			globalThis.cancelAnimationFrame(animationFrameId);
+			animationFrameId = null;
+		}
+		globalThis.removeEventListener("resize", scheduleRender);
+		document.removeEventListener("visibilitychange", handleVisibilityChange);
+		removeAllDividerElements();
+		clearSettingsMenu();
+	};
+};
+
+const setupLifecycle = (): Teardown => {
+	let stopRenderSession: Teardown | null = null;
+
+	const syncRenderSession = (): void => {
+		if (isTargetViewActive() === true) {
+			stopRenderSession ??= createRenderSession();
+			return;
+		}
+
+		stopRenderSession?.();
+		stopRenderSession = null;
+	};
+
+	globalThis.addEventListener("hashchange", syncRenderSession);
+	syncRenderSession();
+
+	return (): void => {
+		globalThis.removeEventListener("hashchange", syncRenderSession);
+		stopRenderSession?.();
+		stopRenderSession = null;
+	};
 };
 
 const bootstrap = (): void => {
@@ -236,18 +307,11 @@ const bootstrap = (): void => {
 	globalWindow.__aiUsageDividerInitialized__ = true;
 
 	const init = (): void => {
-		scheduleRender();
-		globalThis.setTimeout((): void => {
-			scheduleRender();
-		}, 300);
-		globalThis.setTimeout((): void => {
-			scheduleRender();
-		}, 2000);
-		setupAutoRefresh();
+		setupLifecycle();
 	};
 
 	if (document.readyState === "loading") {
-		document.addEventListener("DOMContentLoaded", init);
+		document.addEventListener("DOMContentLoaded", init, { once: true });
 	} else {
 		init();
 	}
