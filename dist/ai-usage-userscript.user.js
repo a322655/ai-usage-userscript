@@ -11,6 +11,7 @@
 // @updateURL    https://raw.githubusercontent.com/eigenigma/ai-usage-userscript/main/dist/ai-usage-userscript.user.js
 // @match        https://chatgpt.com/codex/cloud/settings/analytics*
 // @match        https://claude.ai/settings/usage*
+// @match        https://claude.ai/new*
 // @match        https://www.kimi.com/code/console*
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -91,12 +92,17 @@
 	};
 	var registeredMenuIds = [];
 	var lastMenuSignature = null;
+	var clearSettingsMenu = () => {
+		for (const menuId of registeredMenuIds) _GM_unregisterMenuCommand(menuId);
+		registeredMenuIds = [];
+		lastMenuSignature = null;
+	};
 	var syncSettingsMenu = (labels, disabledLabels, onToggle) => {
 		const uniqueLabels = [...new Set(labels)];
 		const menuSignature = JSON.stringify([uniqueLabels, disabledLabels]);
 		if (menuSignature === lastMenuSignature) return;
+		clearSettingsMenu();
 		lastMenuSignature = menuSignature;
-		for (const menuId of registeredMenuIds) _GM_unregisterMenuCommand(menuId);
 		registeredMenuIds = uniqueLabels.map((label) => _GM_registerMenuCommand(`${disabledLabels.includes(label) === true ? "✗" : "✓"} ${label}`, () => {
 			toggleDivider(label);
 			onToggle();
@@ -211,6 +217,7 @@
 	};
 	var inferDurationMs = (text, resetLabel) => {
 		if (/weekly/iu.test(text) === true || /code\s*review/iu.test(text) === true) return ONE_WEEK_MS;
+		if (/\brate\s+limit\s+details\b/iu.test(text) === true) return FIVE_HOURS_MS;
 		if (/\brate\s+limit\b/iu.test(text) === true) return null;
 		if (/\bcurrent\s+session/iu.test(text) === true) return FIVE_HOURS_MS;
 		const hourWindowMs = parseHourWindowMs(text);
@@ -243,13 +250,6 @@
 			durationMs: inferDurationMs(durationSourceText, resetLabel)
 		};
 	};
-	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
-	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#\"]:not([class*=\"bg-[#ebebf0]\"])";
-	var CLAUDE_TRACK_SELECTOR = "div[class~=\"bg-alpha-2\"][class~=\"h-2\"][class~=\"rounded-full\"]";
-	var CLAUDE_FILL_SELECTOR = "div[class*=\"bg-fill-\"]";
-	var KIMI_CARD_SELECTOR = ".stats-card";
-	var KIMI_BAR_SELECTOR = ".stats-card-progress-bar";
-	var KIMI_FILL_SELECTOR = ".stats-card-progress-filled";
 	var validateTrackGeometry = (trackRect, fillRect) => {
 		if (trackRect.width < 120 || trackRect.height < 6 || trackRect.height > 18) return false;
 		if (fillRect.height < 4 || fillRect.height > 18) return false;
@@ -257,6 +257,66 @@
 		if (fillRect.width < 0 || fillRect.width > trackRect.width + 1) return false;
 		return true;
 	};
+	var CLAUDE_TRACK_SELECTOR = "[data-cds=\"Meter\"] > [role=\"meter\"]";
+	var CLAUDE_FILL_SELECTOR = "div[class*=\"bg-fill-\"]";
+	var CLAUDE_SETTINGS_DIALOG_SELECTOR = `[role="dialog"]:has(${CLAUDE_TRACK_SELECTOR})`;
+	var CLAUDE_SKIP_PATTERNS = [/\$[\d,.]+\s+spent/iu, /\bdaily\s+included\b/iu];
+	var findClaudeRowElement = (candidateNode) => {
+		const labelId = candidateNode.getAttribute("aria-labelledby");
+		const labelElement = labelId === null ? null : document.getElementById(labelId);
+		const valueText = normalizeWhitespace(candidateNode.getAttribute("aria-valuetext") ?? "");
+		if (labelElement === null && valueText.length === 0) return null;
+		let ancestorElement = candidateNode.parentElement;
+		while (ancestorElement !== null && ancestorElement.tagName !== "SECTION") {
+			const ancestorText = normalizeWhitespace(ancestorElement.textContent ?? "");
+			if ((labelElement === null || ancestorElement.contains(labelElement) === true) === true && /resets/iu.test(ancestorText) === true && (valueText.length === 0 || ancestorText.includes(valueText) === true)) return ancestorElement;
+			ancestorElement = ancestorElement.parentElement;
+		}
+		return null;
+	};
+	var resolveClaudeProgressElements = (candidateNode) => {
+		const fillNode = candidateNode.querySelector(CLAUDE_FILL_SELECTOR);
+		const trackContainerNode = candidateNode.parentElement;
+		if (fillNode instanceof HTMLElement === false || trackContainerNode instanceof HTMLElement === false) return null;
+		if (validateTrackGeometry(candidateNode.getBoundingClientRect(), fillNode.getBoundingClientRect()) === false) return null;
+		return { trackContainerElement: trackContainerNode };
+	};
+	var findClaudeQueryRoot = () => document.querySelector(CLAUDE_SETTINGS_DIALOG_SELECTOR) ?? document;
+	var readSectionHeading = (candidateNode, headingCache) => {
+		const sectionElement = candidateNode.closest("section");
+		if (sectionElement === null) return "";
+		const cachedHeading = headingCache.get(sectionElement);
+		if (cachedHeading !== void 0) return cachedHeading;
+		const headingText = normalizeWhitespace(sectionElement.querySelector("h1, h2, h3, h4")?.textContent ?? "");
+		headingCache.set(sectionElement, headingText);
+		return headingText;
+	};
+	var collectClaudeCards = (now) => {
+		const cards = [];
+		const headingCache = new WeakMap();
+		const trackCandidates = findClaudeQueryRoot().querySelectorAll(CLAUDE_TRACK_SELECTOR);
+		for (const candidateNode of trackCandidates) {
+			if (candidateNode instanceof HTMLElement === false) continue;
+			const rowElement = findClaudeRowElement(candidateNode);
+			if (rowElement === null) continue;
+			const rowText = normalizeWhitespace(rowElement.textContent ?? "");
+			if (CLAUDE_SKIP_PATTERNS.some((pattern) => pattern.test(rowText)) === true) continue;
+			const progressElements = resolveClaudeProgressElements(candidateNode);
+			if (progressElements === null) continue;
+			const { resetAt, durationMs } = parseResetInfo(rowElement, rowText, `${readSectionHeading(candidateNode, headingCache)} ${rowText}`, now);
+			cards.push({
+				fullText: rowText,
+				label: deriveCardLabel(rowText),
+				trackContainerElement: progressElements.trackContainerElement,
+				resetAt,
+				durationMs,
+				fillMeaning: "used"
+			});
+		}
+		return cards;
+	};
+	var CODEX_TRACK_SELECTOR = "div[class*=\"bg-[#ebebf0]\"]";
+	var CODEX_FILL_SELECTOR = "div[class*=\"bg-[#\"]:not([class*=\"bg-[#ebebf0]\"])";
 	var resolveCodexTrackContainer = (articleElement) => {
 		const trackNode = articleElement.querySelector(CODEX_TRACK_SELECTOR);
 		if (trackNode instanceof HTMLElement === false) return null;
@@ -304,42 +364,9 @@
 		}
 		return cards;
 	};
-	var resolveClaudeProgressElements = (candidateNode) => {
-		const fillNode = candidateNode.querySelector(CLAUDE_FILL_SELECTOR);
-		if (fillNode instanceof HTMLElement === false) return null;
-		if (validateTrackGeometry(candidateNode.getBoundingClientRect(), fillNode.getBoundingClientRect()) === false) return null;
-		const trackContainerNode = candidateNode.parentElement;
-		if (trackContainerNode instanceof HTMLElement === false) return null;
-		const rowNode = trackContainerNode.parentElement?.parentElement ?? null;
-		if (rowNode instanceof HTMLElement === false) return null;
-		return {
-			trackContainerElement: trackContainerNode,
-			rowElement: rowNode
-		};
-	};
-	var CLAUDE_SKIP_PATTERNS = [/\$[\d,.]+\s+spent/iu, /\bdaily\s+included\b/iu];
-	var collectClaudeCards = (now) => {
-		const cards = [];
-		const trackCandidates = document.querySelectorAll(CLAUDE_TRACK_SELECTOR);
-		for (const candidateNode of trackCandidates) {
-			if (candidateNode instanceof HTMLElement === false) continue;
-			const resolved = resolveClaudeProgressElements(candidateNode);
-			if (resolved === null) continue;
-			const rowText = normalizeWhitespace(resolved.rowElement.textContent ?? "");
-			if (CLAUDE_SKIP_PATTERNS.some((pattern) => pattern.test(rowText)) === true) continue;
-			const sectionHeadingText = normalizeWhitespace(candidateNode.closest("section")?.querySelector("h1, h2, h3, h4")?.textContent ?? "");
-			const { resetAt, durationMs } = parseResetInfo(resolved.rowElement, rowText, `${sectionHeadingText} ${rowText}`, now);
-			cards.push({
-				fullText: rowText,
-				label: deriveCardLabel(rowText),
-				trackContainerElement: resolved.trackContainerElement,
-				resetAt,
-				durationMs,
-				fillMeaning: "used"
-			});
-		}
-		return cards;
-	};
+	var KIMI_CARD_SELECTOR = ".stats-card";
+	var KIMI_BAR_SELECTOR = ".stats-card-progress-bar";
+	var KIMI_FILL_SELECTOR = ".stats-card-progress-filled";
 	var collectKimiCards = (now) => {
 		const cards = [];
 		const cardNodes = document.querySelectorAll(KIMI_CARD_SELECTOR);
@@ -350,13 +377,14 @@
 			if (barNode instanceof HTMLElement === false || fillNode instanceof HTMLElement === false) continue;
 			if (validateTrackGeometry(barNode.getBoundingClientRect(), fillNode.getBoundingClientRect()) === false) continue;
 			const fullText = normalizeWhitespace(cardNode.textContent ?? "");
-			const { resetAt, durationMs } = parseResetInfo(cardNode, fullText, fullText, now);
+			const label = deriveCardLabel(fullText);
+			const parsedResetInfo = parseResetInfo(cardNode, fullText, fullText, now);
 			cards.push({
 				fullText,
-				label: deriveCardLabel(fullText),
+				label,
 				trackContainerElement: barNode,
-				resetAt,
-				durationMs,
+				resetAt: parsedResetInfo.resetAt,
+				durationMs: parsedResetInfo.durationMs,
 				fillMeaning: "used"
 			});
 		}
@@ -404,6 +432,11 @@
 	var DIVIDER_COLOR = "rgb(249, 115, 22)";
 	var DIVIDER_HIT_AREA_WIDTH = "12px";
 	var DIVIDER_BAR_WIDTH = "2px";
+	var isTargetViewActive = () => {
+		if (globalThis.location.hostname !== "claude.ai") return true;
+		const { hash, pathname } = globalThis.location;
+		return pathname.startsWith("/settings/usage") || pathname === "/new" && hash === "#settings/usage";
+	};
 	var computeTargetRemainingRatio = (card, now) => {
 		if (card.resetAt === null || card.durationMs === null || card.durationMs <= 0) return null;
 		const resetTimeMs = card.resetAt.getTime();
@@ -432,8 +465,11 @@
 		return barElement;
 	};
 	var removeDividerElement = (trackContainer) => {
-		const dividerElement = trackContainer.querySelector(`.${DIVIDER_CLASS}`);
-		if (dividerElement !== null) dividerElement.remove();
+		trackContainer.querySelector(`.${DIVIDER_CLASS}`)?.remove();
+	};
+	var removeAllDividerElements = () => {
+		const dividerElements = document.querySelectorAll(`.${DIVIDER_CLASS}`);
+		for (const dividerElement of dividerElements) dividerElement.remove();
 	};
 	var buildDividerTooltip = (targetRemainingRatio) => {
 		return `Pace marker: expected ${(targetRemainingRatio * 100).toFixed(1)}% remaining`;
@@ -470,7 +506,7 @@
 		applyBarStyles(ensureBarElement(dividerElement));
 		dividerElement.title = buildDividerTooltip(targetRemainingRatio);
 	};
-	var renderPaceDividers = () => {
+	var renderPaceDividers = (scheduleRender) => {
 		const now = new Date();
 		const cards = collectUsageCards(now);
 		if (globalThis.location.hostname !== "chatgpt.com") resolveMissingResetInformation(cards);
@@ -491,41 +527,70 @@
 		}
 		syncSettingsMenu(paceableLabels, disabledLabels, scheduleRender);
 	};
-	var renderScheduled = false;
-	var scheduleRender = () => {
-		if (renderScheduled === true) return;
-		renderScheduled = true;
-		globalThis.requestAnimationFrame(() => {
-			renderScheduled = false;
-			renderPaceDividers();
-		});
-	};
-	var setupAutoRefresh = () => {
-		new MutationObserver(scheduleRender).observe(document.body, {
+	var createRenderSession = () => {
+		let active = true;
+		let animationFrameId = null;
+		const scheduleRender = () => {
+			if (active === false || animationFrameId !== null) return;
+			animationFrameId = globalThis.requestAnimationFrame(() => {
+				animationFrameId = null;
+				if (active === true) renderPaceDividers(scheduleRender);
+			});
+		};
+		const observer = new MutationObserver(scheduleRender);
+		observer.observe(document.body, {
 			childList: true,
 			subtree: true
 		});
-		globalThis.setInterval(scheduleRender, UPDATE_INTERVAL_MS);
-		globalThis.addEventListener("resize", scheduleRender);
-		document.addEventListener("visibilitychange", () => {
+		const intervalId = globalThis.setInterval(scheduleRender, UPDATE_INTERVAL_MS);
+		const timeoutIds = [globalThis.setTimeout(scheduleRender, 300), globalThis.setTimeout(scheduleRender, 2e3)];
+		const handleVisibilityChange = () => {
 			if (document.visibilityState === "visible") scheduleRender();
-		});
+		};
+		globalThis.addEventListener("resize", scheduleRender);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		scheduleRender();
+		return () => {
+			active = false;
+			observer.disconnect();
+			globalThis.clearInterval(intervalId);
+			for (const timeoutId of timeoutIds) globalThis.clearTimeout(timeoutId);
+			if (animationFrameId !== null) {
+				globalThis.cancelAnimationFrame(animationFrameId);
+				animationFrameId = null;
+			}
+			globalThis.removeEventListener("resize", scheduleRender);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			removeAllDividerElements();
+			clearSettingsMenu();
+		};
+	};
+	var setupLifecycle = () => {
+		let stopRenderSession = null;
+		const syncRenderSession = () => {
+			if (isTargetViewActive() === true) {
+				stopRenderSession ??= createRenderSession();
+				return;
+			}
+			stopRenderSession?.();
+			stopRenderSession = null;
+		};
+		globalThis.addEventListener("hashchange", syncRenderSession);
+		syncRenderSession();
+		return () => {
+			globalThis.removeEventListener("hashchange", syncRenderSession);
+			stopRenderSession?.();
+			stopRenderSession = null;
+		};
 	};
 	var bootstrap = () => {
 		const globalWindow = globalThis;
 		if (globalWindow.__aiUsageDividerInitialized__ === true) return;
 		globalWindow.__aiUsageDividerInitialized__ = true;
 		const init = () => {
-			scheduleRender();
-			globalThis.setTimeout(() => {
-				scheduleRender();
-			}, 300);
-			globalThis.setTimeout(() => {
-				scheduleRender();
-			}, 2e3);
-			setupAutoRefresh();
+			setupLifecycle();
 		};
-		if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+		if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 		else init();
 	};
 	bootstrap();
